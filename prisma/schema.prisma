@@ -1,0 +1,117 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id        String        @id @default(cuid())
+  email     String        @unique
+  name      String?
+  image     String?
+  settings  UserSettings?
+  createdAt DateTime      @default(now())
+}
+
+model UserSettings {
+  id                    String    @id @default(cuid())
+  userId                String    @unique
+  user                  User      @relation(fields: [userId], references: [id])
+  linkedinLiAt          String?
+  linkedinCsrfToken     String?
+  linkedinProfileUrn    String?
+  linkedinCookieValid   Boolean   @default(false)
+  linkedinLastValidated DateTime?
+  apifyApiToken         String?
+  openrouterApiKey      String?
+  googleSheetsId        String?
+  googleServiceAccount  String?
+  calendarBookingUrl    String    @default("https://calendar.app.google/k8XEhkPnX6sc2GdW9")
+  preferredModel        String    @default("anthropic/claude-sonnet-4")
+}
+
+model Contact {
+  id                 String   @id @default(cuid())
+  name               String
+  position           String?
+  company            String?
+  linkedinUrl        String   @unique
+  linkedinSlug       String?
+  linkedinProfileId  String?
+  linkedinTrackingId String?
+  linkedinEntityUrn  String?
+  companyDescription String?
+  connectionMessage  String?
+  profileFit         String   @default("MEDIUM")
+  fitRationale       String?
+  status             String   @default("TO_CONTACT")
+  inviteSentDate     DateTime?
+  connectedDate      DateTime?
+  followupSentDate   DateTime?
+  notes              String?
+  source             String?
+  enrichedAt         DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  userId             String
+}
+
+model DailyRun {
+  id                 String    @id @default(cuid())
+  date               DateTime  @default(now())
+  phase              String?
+  prospectsFound     Int       @default(0)
+  invitesSent        Int       @default(0)
+  invitesFailed      Int       @default(0)
+  connectionsChecked Int       @default(0)
+  newConnections     Int       @default(0)
+  followupsSent      Int       @default(0)
+  newReplies         Int       @default(0)
+  meetingsBooked     Int       @default(0)
+  status             String    @default("RUNNING")
+  log                String?
+  errorLog           String?
+  userId             String
+  createdAt          DateTime  @default(now())
+  completedAt        DateTime?
+}
+
+model InviteBatch {
+  id        String            @id @default(cuid())
+  date      DateTime          @default(now())
+  status    String            @default("PENDING_APPROVAL")
+  items     InviteBatchItem[]
+  userId    String
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+}
+
+model InviteBatchItem {
+  id            String      @id @default(cuid())
+  batchId       String
+  batch         InviteBatch @relation(fields: [batchId], references: [id])
+  contactId     String
+  draftMessage  String
+  approved      Boolean     @default(true)
+  skipped       Boolean     @default(false)
+  sent          Boolean     @default(false)
+  sendResult    String?
+  editedMessage String?
+  sentAt        DateTime?
+}
+
+model ExecutionLog {
+  id        String   @id @default(cuid())
+  action    String
+  contactId String?
+  request   String?
+  response  String?
+  success   Boolean
+  errorCode String?
+  duration  Int?
+  userId    String
+  createdAt DateTime @default(now())
+}

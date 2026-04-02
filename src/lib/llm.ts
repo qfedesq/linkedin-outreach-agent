@@ -1,0 +1,92 @@
+import { decrypt } from "@/lib/encryption";
+
+interface LLMOptions {
+  temperature?: number;
+  maxTokens?: number;
+}
+
+export async function callLLM(
+  systemPrompt: string,
+  userPrompt: string,
+  apiKey: string,
+  model: string,
+  options?: LLMOptions
+): Promise<string> {
+  const response = await fetch(
+    "https://openrouter.ai/api/v1/chat/completions",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${decrypt(apiKey)}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL || "",
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        max_tokens: options?.maxTokens ?? 500,
+        temperature: options?.temperature ?? 0.7,
+      }),
+    }
+  );
+  if (!response.ok) {
+    throw new Error(`OpenRouter API error: ${response.status}`);
+  }
+  const data = await response.json();
+  return data.choices[0].message.content;
+}
+
+export const ICP_SCORING_PROMPT = `You are an ICP (Ideal Customer Profile) scoring agent for the arenas.fi Sky Protocol campaign.
+
+CAMPAIGN: arenas.fi is assembling 5-10 specialty lenders/capital deployers to access a $100M stablecoin liquidity line from Sky Protocol ($7B+ DeFi reserve). Selected originators get committed USDS capital at competitive rates. Protofire handles all onchain integration.
+
+SCORING CRITERIA:
+TIER 1 (HIGH fit): Embedded finance/lending, Revenue-based financing, Merchant cash advances, Invoice/trade/supply chain finance, B2B BNPL
+TIER 2 (MEDIUM fit): SMB lending, Real estate bridge lending, Specialty consumer lending, Equipment financing, Payroll/earned wage access
+TIER 3 (LOW fit): Digital banks with lending arms, Credit card issuers, Insurance-backed credit, Family offices with credit mandates
+
+TARGET ROLES (boost score): CEO, Co-Founder, CFO, Head of Capital Markets, Chief Risk Officer
+SIGNALS OF FIT (boost score): Fast growth, capital-constrained, platform model, crypto-adjacent, recent capital markets hire
+DISQUALIFY (score as LOW regardless): Pure equity VC, 30-year mortgage, traditional bank, pre-Series A <$5M deployed
+
+GEOGRAPHY: UK > Europe > US > APAC (use as tiebreaker only)
+
+Given the following LinkedIn profile, respond with ONLY a JSON object:
+{"fit": "HIGH" | "MEDIUM" | "LOW", "rationale": "<1 sentence explaining why>"}`;
+
+export function getConnectionNotePrompt(calendarUrl: string): string {
+  return `You are writing LinkedIn connection request notes for Andrei Yurkevich at Protofire/arenas.fi.
+
+CAMPAIGN: arenas.fi is assembling a consortium of 5-10 specialty lenders and capital deployers to access a $100M stablecoin liquidity line from Sky Protocol (one of DeFi's largest reserve systems, $7B+). Selected originators get committed USDS capital at competitive rates, deployed in days, no bank-style covenants. Protofire handles all onchain integration — zero engineering lift on their side.
+
+CONNECTION NOTE FORMULA:
+[First name] — [specific signal about their company/role]. [1-line hook about arenas.fi/Sky Protocol]. [Soft CTA]?
+
+RULES:
+- MUST be ≤ 300 characters total. This is critical — LinkedIn rejects notes over 300 chars.
+- Reference something SPECIFIC about their company, role, or recent activity
+- Never use "I came across your profile" or generic openers
+- End with a low-pressure question
+- Tone: peer-to-peer, knowledgeable, not salesy
+
+Respond with ONLY the connection note text, nothing else. Count your characters carefully.`;
+}
+
+export function getFollowupPrompt(calendarUrl: string): string {
+  return `You are writing a LinkedIn follow-up message for Andrei Yurkevich at Protofire/arenas.fi.
+
+This person accepted a connection request about the Sky Protocol $100M stablecoin facility 3+ days ago but hasn't replied.
+
+RULES:
+- 3-4 sentences MAX
+- Specific to their company (not a copy-paste blast)
+- Must include the calendar link: ${calendarUrl}
+- Tone: warm re-opener, not a second pitch
+- NEVER re-explain the whole product
+- ONE follow-up only — if no reply after 2 weeks, mark as Unresponsive
+
+Respond with ONLY the message text, nothing else.`;
+}
