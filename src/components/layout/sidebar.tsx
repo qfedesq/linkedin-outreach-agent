@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
-  Play,
+  Activity,
   Search,
   Send,
   UserCheck,
@@ -14,9 +14,9 @@ import {
   RefreshCw,
   ScrollText,
   Settings,
-  Activity,
 } from "lucide-react";
 import { APP_VERSION } from "@/lib/constants";
+import { useEffect, useState } from "react";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -27,48 +27,94 @@ const navItems = [
   { href: "/responses", label: "Inbox", icon: Inbox },
   { href: "/contacts", label: "Contacts", icon: Users },
   { href: "/sync", label: "Sync", icon: RefreshCw },
+];
+
+const bottomItems = [
   { href: "/logs", label: "Logs", icon: ScrollText },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
+  const [inviteCount, setInviteCount] = useState({ sent: 0, max: 20 });
+
+  useEffect(() => {
+    fetch("/api/contacts?status=INVITED&limit=1")
+      .then(r => r.json())
+      .then(d => setInviteCount(prev => ({ ...prev, sent: d.total || 0 })))
+      .catch(() => {});
+  }, []);
 
   return (
-    <aside className="hidden lg:flex lg:flex-col lg:w-64 lg:fixed lg:inset-y-0 border-r border-border bg-card">
-      <div className="flex items-center h-16 px-6 border-b border-border">
+    <aside className="hidden lg:flex lg:flex-col lg:w-[200px] lg:fixed lg:inset-y-0 bg-sidebar border-r border-sidebar-border">
+      {/* Logo */}
+      <div className="flex items-center h-12 px-4 border-b border-sidebar-border">
         <Link href="/" className="flex items-center gap-2">
-          <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
-            <span className="text-primary-foreground font-bold text-sm">LA</span>
-          </div>
-          <span className="font-semibold text-lg">LinkedIn Agent</span>
+          <span className="text-sm font-bold tracking-tighter text-foreground">Outreach Agent</span>
         </Link>
       </div>
-      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+
+      {/* Main Nav */}
+      <nav className="flex-1 px-2 py-3 space-y-0.5">
         {navItems.map((item) => {
-          const isActive =
-            item.href === "/"
-              ? pathname === "/"
-              : pathname.startsWith(item.href);
+          const isActive = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
           return (
             <Link
               key={item.href}
               href={item.href}
               className={cn(
-                "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors",
+                "flex items-center gap-3 px-3 py-2 text-[12px] font-medium tracking-tight transition-all duration-150 rounded",
                 isActive
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                  ? "bg-accent text-primary border-l-2 border-primary font-semibold"
+                  : "text-muted-foreground hover:text-foreground hover:bg-accent"
               )}
             >
-              <item.icon className="h-4 w-4" />
+              <item.icon className="w-4 h-4" />
               {item.label}
             </Link>
           );
         })}
       </nav>
-      <div className="px-4 py-3 border-t border-border">
-        <span className="text-xs text-muted-foreground">V{APP_VERSION}</span>
+
+      {/* Bottom section */}
+      <div className="mt-auto px-3 pb-3">
+        {/* Invite usage tracker */}
+        <div className="bg-card rounded-lg p-3 border border-border mb-3">
+          <p className="text-[10px] text-muted-foreground uppercase tracking-widest mb-1 font-bold">Daily Invites</p>
+          <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
+            <div
+              className="h-full bg-primary rounded-full transition-all"
+              style={{ width: `${Math.min((inviteCount.sent / inviteCount.max) * 100, 100)}%` }}
+            />
+          </div>
+          <p className="text-[11px] text-foreground mt-2 font-medium font-mono">
+            {inviteCount.sent}/{inviteCount.max} invites
+          </p>
+        </div>
+
+        {/* Bottom nav */}
+        <div className="border-t border-sidebar-border pt-2 space-y-0.5">
+          {bottomItems.map((item) => {
+            const isActive = pathname.startsWith(item.href);
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={cn(
+                  "flex items-center gap-3 px-3 py-2 text-[12px] font-medium tracking-tight transition-all duration-150 rounded",
+                  isActive
+                    ? "bg-accent text-primary font-semibold"
+                    : "text-muted-foreground hover:text-foreground hover:bg-accent"
+                )}
+              >
+                <item.icon className="w-4 h-4" />
+                {item.label}
+              </Link>
+            );
+          })}
+        </div>
+
+        <p className="text-[10px] text-muted-foreground mt-2 px-3 font-mono">V{APP_VERSION}</p>
       </div>
     </aside>
   );
