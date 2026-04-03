@@ -3,6 +3,7 @@ import { getAuthUser, unauthorized } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
 import { decrypt, encrypt } from "@/lib/encryption";
 import { LinkedInClient } from "@/lib/linkedin/client";
+import { logActivity } from "@/lib/activity-log";
 
 export async function POST(request: Request) {
   const user = await getAuthUser();
@@ -11,22 +12,22 @@ export async function POST(request: Request) {
   const body = await request.json();
   let liAt = body.liAt;
 
-  // If no liAt provided, use stored one
   if (!liAt && user.settings?.linkedinLiAt) {
     liAt = decrypt(user.settings.linkedinLiAt);
   }
 
   if (!liAt) {
-    return NextResponse.json(
-      { success: false, error: "No LinkedIn cookie provided" },
-      { status: 400 }
-    );
+    return NextResponse.json({ success: false, error: "No LinkedIn cookie provided" }, { status: 400 });
   }
+
+  await logActivity(user.id, "test_linkedin", {
+    level: "info",
+    message: "Testing LinkedIn cookie validity...",
+  });
 
   try {
     const { csrfToken, authInfo } = await LinkedInClient.validateAndInit(liAt);
 
-    // Update settings with validated cookie info
     await prisma.userSettings.upsert({
       where: { userId: user.id },
       update: {
@@ -46,6 +47,12 @@ export async function POST(request: Request) {
       },
     });
 
+    await logActivity(user.id, "test_linkedin", {
+      level: "success",
+      message: `LinkedIn connected as ${authInfo.firstName} ${authInfo.lastName} (${authInfo.publicIdentifier})`,
+      success: true,
+    });
+
     return NextResponse.json({
       success: true,
       profile: {
@@ -55,13 +62,18 @@ export async function POST(request: Request) {
       },
     });
   } catch (error) {
-    // Mark as invalid
     if (user.settings) {
       await prisma.userSettings.update({
         where: { userId: user.id },
         data: { linkedinCookieValid: false },
       });
     }
+
+    await logActivity(user.id, "test_linkedin", {
+      level: "error",
+      message: `LinkedIn test failed: ${(error as Error).message}`,
+      success: false,
+    });
 
     return NextResponse.json({
       success: false,

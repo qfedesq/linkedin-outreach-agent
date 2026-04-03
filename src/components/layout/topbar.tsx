@@ -15,48 +15,35 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Sidebar } from "./sidebar";
 import { useEffect, useState } from "react";
 
-type CookieStatus = "valid" | "warning" | "expired" | "unknown";
+interface ServiceStatus {
+  linkedin: boolean;
+  apify: boolean;
+  openrouter: boolean;
+}
 
 export function TopBar() {
   const { data: session } = useSession();
-  const [cookieStatus, setCookieStatus] = useState<CookieStatus>("unknown");
+  const [services, setServices] = useState<ServiceStatus>({
+    linkedin: false,
+    apify: false,
+    openrouter: false,
+  });
 
   useEffect(() => {
     fetch("/api/settings")
       .then((r) => r.json())
       .then((data) => {
-        if (!data.linkedinLiAt) {
-          setCookieStatus("unknown");
-        } else if (data.linkedinCookieValid) {
-          if (data.linkedinLastValidated) {
-            const hoursAgo =
-              (Date.now() - new Date(data.linkedinLastValidated).getTime()) /
-              (1000 * 60 * 60);
-            setCookieStatus(hoursAgo > 24 ? "warning" : "valid");
-          } else {
-            setCookieStatus("valid");
-          }
-        } else {
-          // Cookie exists but not validated yet — show as valid (user just saved it)
-          setCookieStatus("valid");
-        }
+        setServices({
+          linkedin: !!data.linkedinLiAt,
+          apify: !!data.apifyApiToken,
+          openrouter: !!data.openrouterApiKey,
+        });
       })
-      .catch(() => setCookieStatus("unknown"));
+      .catch(() => {});
   }, []);
 
-  const statusColor = {
-    valid: "bg-green-500",
-    warning: "bg-yellow-500",
-    expired: "bg-red-500",
-    unknown: "bg-gray-400",
-  }[cookieStatus];
-
-  const statusLabel = {
-    valid: "Connected",
-    warning: "Check cookie",
-    expired: "Expired",
-    unknown: "Not configured",
-  }[cookieStatus];
+  const connectedCount = Object.values(services).filter(Boolean).length;
+  const allConnected = connectedCount === 3;
 
   return (
     <header className="sticky top-0 z-40 flex h-16 items-center gap-4 border-b border-border bg-background px-4 lg:px-6">
@@ -76,9 +63,18 @@ export function TopBar() {
       <div className="flex items-center gap-3">
         <Badge variant="outline" className="gap-1.5 py-1">
           <Link2 className="h-3 w-3" />
-          <span className={`h-2 w-2 rounded-full ${statusColor}`} />
-          <span className="text-xs">{statusLabel}</span>
+          <span className={`h-2 w-2 rounded-full ${allConnected ? "bg-green-500" : connectedCount > 0 ? "bg-yellow-500" : "bg-gray-400"}`} />
+          <span className="text-xs">
+            {allConnected ? "Connected" : connectedCount > 0 ? `${connectedCount}/3` : "Not configured"}
+          </span>
         </Badge>
+
+        {/* Individual service indicators */}
+        <div className="hidden md:flex items-center gap-1">
+          <span className={`h-1.5 w-1.5 rounded-full ${services.linkedin ? "bg-green-500" : "bg-gray-300"}`} title="LinkedIn" />
+          <span className={`h-1.5 w-1.5 rounded-full ${services.apify ? "bg-green-500" : "bg-gray-300"}`} title="Apify" />
+          <span className={`h-1.5 w-1.5 rounded-full ${services.openrouter ? "bg-green-500" : "bg-gray-300"}`} title="OpenRouter" />
+        </div>
 
         <DropdownMenu>
           <DropdownMenuTrigger>

@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import { getAuthUser, unauthorized } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
 import { decrypt } from "@/lib/encryption";
+import { logActivity } from "@/lib/activity-log";
 
-export const maxDuration = 180; // Apify actor can take up to 3 min
+export const maxDuration = 180;
 
 export async function POST(request: Request) {
   const user = await getAuthUser();
@@ -11,11 +12,21 @@ export async function POST(request: Request) {
 
   const body = await request.json();
   const { keywords, geography, maxResults = 25 } = body;
-
   const token = decrypt(user.settings.apifyApiToken);
 
+  await logActivity(user.id, "apify_scrape", {
+    level: "info",
+    message: `Starting Apify scrape: "${keywords}" (geo=${geography}, max=${maxResults})`,
+  });
+
+  const startTime = Date.now();
+
   try {
-    // Use free linkedin-profile-search actor (no cookies required)
+    await logActivity(user.id, "apify_scrape", {
+      level: "debug",
+      message: "Calling Apify actor harvestapi~linkedin-profile-search...",
+    });
+
     const runResponse = await fetch(
       "https://api.apify.com/v2/acts/harvestapi~linkedin-profile-search/runs?waitForFinish=120",
       {
@@ -34,6 +45,13 @@ export async function POST(request: Request) {
 
     if (!runResponse.ok) {
       const errBody = await runResponse.text().catch(() => "");
+      await logActivity(user.id, "apify_scrape", {
+        level: "error",
+        message: `Apify actor returned ${runResponse.status}: ${errBody.substring(0, 200)}`,
+        success: false,
+        errorCode: `${runResponse.status}`,
+        duration: Date.now() - startTime,
+      });
       return NextResponse.json(
         { error: `Apify error ${runResponse.status}: ${errBody.substring(0, 500)}` },
         { status: 500 }
@@ -43,11 +61,21 @@ export async function POST(request: Request) {
     const runData = await runResponse.json();
     const datasetId = runData.data?.defaultDatasetId;
 
+    await logActivity(user.id, "apify_scrape", {
+      level: "info",
+      message: `Apify actor completed. Dataset: ${datasetId}. Fetching results...`,
+      duration: Date.now() - startTime,
+    });
+
     if (!datasetId) {
+      await logActivity(user.id, "apify_scrape", {
+        level: "error",
+        message: "No dataset returned from Apify",
+        success: false,
+      });
       return NextResponse.json({ error: "No dataset returned from Apify" }, { status: 500 });
     }
 
-    // Fetch results from dataset
     const dataResponse = await fetch(
       `https://api.apify.com/v2/datasets/${datasetId}/items?format=json`,
       { headers: { Authorization: `Bearer ${token}` } }
@@ -59,14 +87,19 @@ export async function POST(request: Request) {
 
     const profiles = await dataResponse.json();
 
-    // If no results, return debug info
+    await logActivity(user.id, "apify_scrape", {
+      level: "info",
+      message: `Apify returned ${Array.isArray(profiles) ? profiles.length : 0} raw profiles. Processing...`,
+    });
+
     if (!Array.isArray(profiles) || profiles.length === 0) {
-      return NextResponse.json({
-        total: 0,
-        created: 0,
-        skipped: 0,
-        debug: `Dataset returned ${Array.isArray(profiles) ? '0 items' : typeof profiles}. Actor may need different input format.`,
+      await logActivity(user.id, "apify_scrape", {
+        level: "warning",
+        message: "Apify returned 0 profiles. Actor may need different input format or no results matched.",
+        success: true,
+        duration: Date.now() - startTime,
       });
+      return NextResponse.json({ total: 0, created: 0, skipped: 0 });
     }
 
     let created = 0;
@@ -97,16 +130,30 @@ export async function POST(request: Request) {
           },
         });
         created++;
+        await logActivity(user.id, "apify_scrape", {
+          level: "success",
+          message: `Saved: ${name} — ${profile.title || "?"} @ ${profile.companyName || profile.company || "?"}`,
+        });
       } catch {
         skipped++;
       }
     }
 
+    await logActivity(user.id, "apify_scrape", {
+      level: "success",
+      message: `Apify scrape complete: ${created} saved, ${skipped} skipped, ${profiles.length} total`,
+      success: true,
+      duration: Date.now() - startTime,
+    });
+
     return NextResponse.json({ total: profiles.length, created, skipped });
   } catch (error) {
-    return NextResponse.json(
-      { error: (error as Error).message },
-      { status: 500 }
-    );
+    await logActivity(user.id, "apify_scrape", {
+      level: "error",
+      message: `Apify scrape failed: ${(error as Error).message}`,
+      success: false,
+      duration: Date.now() - startTime,
+    });
+    return NextResponse.json({ error: (error as Error).message }, { status: 500 });
   }
 }

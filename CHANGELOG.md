@@ -7,6 +7,17 @@ Version increments by +0.1 on every merge to `main`.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-04-03
+
+### Added
+- **Live Watch page** (`/live`): Real-time execution monitor with auto-refresh (3s), uptime counter, stats bar (total/success/errors), color-coded action badges, duration tracking, and live/pause toggle
+- **Granular execution logging**: All API endpoints (LinkedIn search, Apify scrape, LinkedIn test, connection checks, inbox scan) now log detailed step-by-step activity with timing
+- **Activity log utility** (`lib/activity-log.ts`): Centralized logging function used by all endpoints
+
+### Changed
+- **Topbar**: Shows all 3 service connection statuses (LinkedIn/Apify/OpenRouter) with individual green dots. Displays "Connected" when all 3 are configured, "X/3" for partial
+- **Sidebar**: Added "Live Watch" navigation item with Activity icon
+
 ## [0.3.0] - 2026-04-03
 
 ### Fixed
