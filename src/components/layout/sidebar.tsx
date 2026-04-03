@@ -21,11 +21,8 @@ import { APP_VERSION } from "@/lib/constants";
 import { useEffect, useState } from "react";
 
 const navItems = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/chat", label: "Agent", icon: MessageSquare },
-  { href: "/command", label: "Execute", icon: Activity },
   { href: "/contacts", label: "Contacts", icon: Users },
-  { href: "/invites", label: "Invites", icon: Send },
   { href: "/performance", label: "Analytics", icon: TrendingUp },
 ];
 

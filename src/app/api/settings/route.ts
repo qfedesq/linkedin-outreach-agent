@@ -105,6 +105,7 @@ export async function PUT(request: Request) {
   if (body.dailyInviteLimit !== undefined) data.dailyInviteLimit = parseInt(body.dailyInviteLimit) || 20;
   if (body.followupDelayDays !== undefined) data.followupDelayDays = parseInt(body.followupDelayDays) || 3;
   if (body.autopilotEnabled !== undefined) data.autopilotEnabled = Boolean(body.autopilotEnabled);
+  if (body.autonomyLevel !== undefined) data.autonomyLevel = body.autonomyLevel;
   // Unipile fields
   if (body.unipileApiKey !== undefined && body.unipileApiKey !== "••••••••") {
     data.unipileApiKey = body.unipileApiKey ? encrypt(body.unipileApiKey) : null;

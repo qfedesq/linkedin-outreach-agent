@@ -172,7 +172,14 @@ export default function SettingsPage() {
           <div className="grid grid-cols-3 gap-4">
             <div className="space-y-2"><Label>Daily Invite Limit</Label><Input type="number" value={settings.dailyInviteLimit} onChange={e => setSettings(p => ({ ...p, dailyInviteLimit: parseInt(e.target.value) || 20 }))} /></div>
             <div className="space-y-2"><Label>Follow-up Delay (days)</Label><Input type="number" value={settings.followupDelayDays} onChange={e => setSettings(p => ({ ...p, followupDelayDays: parseInt(e.target.value) || 3 }))} /></div>
-            <div className="space-y-2"><Label>Auto-pilot</Label><div className="flex items-center gap-2 pt-2"><input type="checkbox" checked={settings.autopilotEnabled} onChange={e => setSettings(p => ({ ...p, autopilotEnabled: e.target.checked }))} className="rounded" /><span className="text-sm text-muted-foreground">Run daily automatically</span></div></div>
+            <div className="space-y-2">
+              <Label>Agent Autonomy</Label>
+              <select value={(settings as unknown as Record<string, string>).autonomyLevel || "training"} onChange={e => setSettings(p => ({ ...p, autonomyLevel: e.target.value } as Settings))} className="w-full bg-card border border-border rounded px-3 py-2 text-sm">
+                <option value="training">Training — asks before sending</option>
+                <option value="semi">Semi-auto — sends low-risk, asks for invites</option>
+                <option value="full">Full auto — executes everything</option>
+              </select>
+            </div>
           </div>
         </CardContent>
       </Card>

@@ -39,6 +39,7 @@ model UserSettings {
   dailyInviteLimit      Int       @default(20)
   followupDelayDays     Int       @default(3)
   autopilotEnabled      Boolean   @default(false)
+  autonomyLevel         String    @default("training") // "training" | "semi" | "full"
   // Unipile integration
   unipileApiKey         String?
   unipileAccountId      String?
@@ -124,5 +125,22 @@ model ExecutionLog {
   errorCode String?
   duration  Int?
   userId    String
+  createdAt DateTime @default(now())
+}
+
+model AgentKnowledge {
+  id        String   @id @default(cuid())
+  userId    String
+  category  String   // "message_style", "icp_insight", "strategy", "correction"
+  content   String
+  source    String   // "user_feedback", "performance_analysis", "self_learning"
+  createdAt DateTime @default(now())
+}
+
+model ChatMessage {
+  id        String   @id @default(cuid())
+  userId    String
+  role      String   // "user", "assistant"
+  content   String
   createdAt DateTime @default(now())
 }
