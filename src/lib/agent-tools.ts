@@ -109,6 +109,14 @@ export async function getToolDefinitions() {
     {
       type: "function" as const,
       function: {
+        name: "get_performance_report",
+        description: "Get full performance analytics: conversion rates, funnel, ICP fit performance, best messages, top profiles",
+        parameters: { type: "object", properties: {}, required: [] },
+      },
+    },
+    {
+      type: "function" as const,
+      function: {
         name: "update_strategy",
         description: "Update the outreach strategy notes that the agent uses for future message generation",
         parameters: {
@@ -266,6 +274,36 @@ export async function executeTool(
         },
         message: `${items.length} invites sent, ${successful.length} accepted (${items.length > 0 ? Math.round((successful.length / items.length) * 100) : 0}% rate)`,
       };
+    }
+
+    case "get_performance_report": {
+      try {
+        // Fetch from the performance API internally
+        const statuses = ["TO_CONTACT", "INVITED", "CONNECTED", "FOLLOWED_UP", "REPLIED", "MEETING_BOOKED"];
+        const counts: Record<string, number> = {};
+        for (const s of statuses) counts[s] = await prisma.contact.count({ where: { userId, status: s } });
+        const total = await prisma.contact.count({ where: { userId } });
+
+        const sentItems = await prisma.inviteBatchItem.count({ where: { batch: { userId }, sent: true } });
+        const connectedFromInvites = await prisma.contact.count({ where: { userId, status: { in: ["CONNECTED", "FOLLOWED_UP", "REPLIED", "MEETING_BOOKED"] } } });
+        const acceptRate = sentItems > 0 ? Math.round(connectedFromInvites / sentItems * 100) : 0;
+
+        // Fit performance
+        const fitPerf: Record<string, string> = {};
+        for (const fit of ["HIGH", "MEDIUM", "LOW"]) {
+          const fitSent = await prisma.contact.count({ where: { userId, profileFit: fit, status: { not: "TO_CONTACT" } } });
+          const fitAccepted = await prisma.contact.count({ where: { userId, profileFit: fit, status: { in: ["CONNECTED", "FOLLOWED_UP", "REPLIED", "MEETING_BOOKED"] } } });
+          fitPerf[fit] = `${fitAccepted}/${fitSent} (${fitSent > 0 ? Math.round(fitAccepted / fitSent * 100) : 0}%)`;
+        }
+
+        return {
+          success: true,
+          data: { total, counts, sentItems, connectedFromInvites, acceptRate, fitPerf },
+          message: `Pipeline: ${total} total | Sent: ${sentItems} invites | Accepted: ${connectedFromInvites} (${acceptRate}%) | Fit: HIGH ${fitPerf.HIGH}, MEDIUM ${fitPerf.MEDIUM}, LOW ${fitPerf.LOW}`,
+        };
+      } catch {
+        return { success: false, message: "Failed to load performance data" };
+      }
     }
 
     case "update_strategy": {

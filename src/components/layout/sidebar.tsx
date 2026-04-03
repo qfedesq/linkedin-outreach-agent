@@ -15,6 +15,7 @@ import {
   ScrollText,
   Settings,
   MessageSquare,
+  TrendingUp,
 } from "lucide-react";
 import { APP_VERSION } from "@/lib/constants";
 import { useEffect, useState } from "react";
@@ -28,6 +29,7 @@ const navItems = [
   { href: "/followups", label: "Follow-ups", icon: UserCheck },
   { href: "/responses", label: "Inbox", icon: Inbox },
   { href: "/contacts", label: "Contacts", icon: Users },
+  { href: "/performance", label: "Performance", icon: TrendingUp },
   { href: "/sync", label: "Sync", icon: RefreshCw },
 ];
 
