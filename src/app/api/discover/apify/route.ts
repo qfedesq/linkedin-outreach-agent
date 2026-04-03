@@ -17,9 +17,9 @@ export async function POST(request: Request) {
   const liAt = decrypt(user.settings.linkedinLiAt);
 
   try {
-    // Start Apify actor run with required cookie and proxy config
+    // Use linkedin-people-search-scraper (searches by keywords, not URLs)
     const runResponse = await fetch(
-      "https://api.apify.com/v2/acts/curious_coder~linkedin-profile-scraper/runs?waitForFinish=120",
+      "https://api.apify.com/v2/acts/curious_coder~linkedin-people-search-scraper/runs?waitForFinish=180",
       {
         method: "POST",
         headers: {
@@ -32,9 +32,9 @@ export async function POST(request: Request) {
             useApifyProxy: true,
             apifyProxyGroups: ["RESIDENTIAL"],
           },
-          searchKeywords: keywords,
-          maxResults,
+          keyword: keywords,
           location: geography || "",
+          maxResults,
           deepScrape: false,
         }),
       }
@@ -43,7 +43,7 @@ export async function POST(request: Request) {
     if (!runResponse.ok) {
       const errBody = await runResponse.text().catch(() => "");
       return NextResponse.json(
-        { error: `Apify error ${runResponse.status}: ${errBody.substring(0, 300)}` },
+        { error: `Apify error ${runResponse.status}: ${errBody.substring(0, 500)}` },
         { status: 500 }
       );
     }
@@ -52,14 +52,18 @@ export async function POST(request: Request) {
     const datasetId = runData.data?.defaultDatasetId;
 
     if (!datasetId) {
-      return NextResponse.json({ error: "No dataset returned" }, { status: 500 });
+      return NextResponse.json({ error: "No dataset returned from Apify" }, { status: 500 });
     }
 
-    // Fetch results
+    // Fetch results from dataset
     const dataResponse = await fetch(
       `https://api.apify.com/v2/datasets/${datasetId}/items?format=json`,
       { headers: { Authorization: `Bearer ${token}` } }
     );
+
+    if (!dataResponse.ok) {
+      return NextResponse.json({ error: `Failed to fetch results: ${dataResponse.status}` }, { status: 500 });
+    }
 
     const profiles = await dataResponse.json();
 
@@ -67,23 +71,25 @@ export async function POST(request: Request) {
     let skipped = 0;
 
     for (const profile of profiles) {
-      const linkedinUrl = (profile.url || profile.linkedinUrl || "").toLowerCase().replace(/\/$/, "").split("?")[0];
-      if (!linkedinUrl.includes("linkedin.com/in/")) {
+      // Handle various field names from different actor output formats
+      const profileUrl = (profile.profileUrl || profile.url || profile.linkedinUrl || "").toLowerCase().replace(/\/$/, "").split("?")[0];
+      if (!profileUrl.includes("linkedin.com/in/")) {
         skipped++;
         continue;
       }
 
-      const slug = linkedinUrl.match(/linkedin\.com\/in\/([^/?]+)/i)?.[1] || null;
+      const slug = profileUrl.match(/linkedin\.com\/in\/([^/?]+)/i)?.[1] || null;
+      const name = (profile.fullName || `${profile.firstName || ""} ${profile.lastName || ""}`.trim() || "Unknown");
 
       try {
         await prisma.contact.create({
           data: {
-            name: `${profile.firstName || ""} ${profile.lastName || ""}`.trim() || profile.fullName || "Unknown",
-            position: profile.title || profile.headline || null,
-            company: profile.companyName || profile.company || null,
-            linkedinUrl: linkedinUrl.replace(/^https?:\/\/(www\.)?linkedin\.com/, "https://www.linkedin.com"),
+            name,
+            position: profile.title || profile.headline || profile.currentJobTitle || null,
+            company: profile.companyName || profile.company || profile.currentCompany || null,
+            linkedinUrl: profileUrl.replace(/^https?:\/\/(www\.)?linkedin\.com/, "https://www.linkedin.com"),
             linkedinSlug: slug,
-            companyDescription: profile.companyDescription || null,
+            companyDescription: profile.companyDescription || profile.about || null,
             source: "apify",
             userId: user.id,
           },
