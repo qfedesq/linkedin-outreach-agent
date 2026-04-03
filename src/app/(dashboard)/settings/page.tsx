@@ -342,6 +342,54 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
+      {/* Unipile (Persistent LinkedIn) */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Unipile (Persistent LinkedIn)</CardTitle>
+          <CardDescription>
+            Unipile provides persistent LinkedIn API access without manual cookie refresh.
+            Get your DSN and API key from <a href="https://dashboard.unipile.com" target="_blank" className="text-primary underline">dashboard.unipile.com</a>
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <SecretInput
+              id="unipileApiKey"
+              label="Unipile API Key"
+              value={(settings as unknown as Record<string, string>).unipileApiKey || ""}
+              onChange={(v) => setSettings((prev) => ({ ...prev, unipileApiKey: v } as Settings))}
+            />
+            <div className="space-y-2">
+              <Label>Account ID</Label>
+              <Input
+                value={(settings as unknown as Record<string, string>).unipileAccountId || ""}
+                onChange={(e) => setSettings((prev) => ({ ...prev, unipileAccountId: e.target.value } as Settings))}
+                placeholder="e.g., CNyD9GLrR5WUtv1UuWbGrQ"
+              />
+            </div>
+          </div>
+          <div className="flex items-center gap-4">
+            <Button onClick={async () => {
+              setTesting(prev => ({ ...prev, unipile: true }));
+              try {
+                const res = await fetch("/api/settings/test-unipile", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({}),
+                });
+                const data = await res.json();
+                setTestResults(prev => ({ ...prev, unipile: { success: data.success, message: data.success ? `Connected: ${data.profile}` : data.error } }));
+              } catch { setTestResults(prev => ({ ...prev, unipile: { success: false, message: "Connection failed" } })); }
+              finally { setTesting(prev => ({ ...prev, unipile: false })); }
+            }} disabled={testing.unipile} size="sm">
+              {testing.unipile && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Test Connection
+            </Button>
+            <TestResult id="unipile" />
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Campaign Configuration */}
       <Card>
         <CardHeader>

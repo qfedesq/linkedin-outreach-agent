@@ -34,6 +34,8 @@ export async function GET(request: NextRequest) {
       dailyInviteLimit: settings.dailyInviteLimit,
       followupDelayDays: settings.followupDelayDays,
       autopilotEnabled: settings.autopilotEnabled,
+      unipileApiKey: settings.unipileApiKey ? decrypt(settings.unipileApiKey) : null,
+      unipileAccountId: settings.unipileAccountId,
     });
   }
 
@@ -55,6 +57,8 @@ export async function GET(request: NextRequest) {
     dailyInviteLimit: settings.dailyInviteLimit,
     followupDelayDays: settings.followupDelayDays,
     autopilotEnabled: settings.autopilotEnabled,
+    unipileApiKey: settings.unipileApiKey ? "••••••••" : null,
+    unipileAccountId: settings.unipileAccountId,
   });
 }
 
@@ -101,6 +105,11 @@ export async function PUT(request: Request) {
   if (body.dailyInviteLimit !== undefined) data.dailyInviteLimit = parseInt(body.dailyInviteLimit) || 20;
   if (body.followupDelayDays !== undefined) data.followupDelayDays = parseInt(body.followupDelayDays) || 3;
   if (body.autopilotEnabled !== undefined) data.autopilotEnabled = Boolean(body.autopilotEnabled);
+  // Unipile fields
+  if (body.unipileApiKey !== undefined && body.unipileApiKey !== "••••••••") {
+    data.unipileApiKey = body.unipileApiKey ? encrypt(body.unipileApiKey) : null;
+  }
+  if (body.unipileAccountId !== undefined) data.unipileAccountId = body.unipileAccountId || null;
 
   await prisma.userSettings.upsert({
     where: { userId: user.id },
