@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { decrypt } from "@/lib/encryption";
 import { logActivity } from "@/lib/activity-log";
 
-export const maxDuration = 180;
+export const maxDuration = 300; // 5 min — actor can take a while
 
 export async function POST(request: Request) {
   const user = await getAuthUser();
@@ -14,9 +14,13 @@ export async function POST(request: Request) {
   const { keywords, geography, maxResults = 25 } = body;
   const token = decrypt(user.settings.apifyApiToken);
 
+  // Parse keywords into job title (the actor searches by job title + location)
+  const jobTitle = keywords || "CEO";
+  const location = geography || "";
+
   await logActivity(user.id, "apify_scrape", {
     level: "info",
-    message: `Starting Apify scrape: "${keywords}" (geo=${geography}, max=${maxResults})`,
+    message: `Starting Apify scrape: title="${jobTitle}", location="${location}", max=${maxResults}`,
   });
 
   const startTime = Date.now();
@@ -24,11 +28,11 @@ export async function POST(request: Request) {
   try {
     await logActivity(user.id, "apify_scrape", {
       level: "debug",
-      message: "Calling Apify actor harvestapi~linkedin-profile-search...",
+      message: "Calling Apify actor apimaestro~linkedin-profile-search-scraper...",
     });
 
     const runResponse = await fetch(
-      "https://api.apify.com/v2/acts/harvestapi~linkedin-profile-search/runs?waitForFinish=120",
+      "https://api.apify.com/v2/acts/apimaestro~linkedin-profile-search-scraper/runs?waitForFinish=240",
       {
         method: "POST",
         headers: {
@@ -36,9 +40,9 @@ export async function POST(request: Request) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          keyword: keywords,
-          location: geography || "",
-          maxProfiles: maxResults,
+          current_job_title: jobTitle,
+          location: location,
+          rows: maxResults,
         }),
       }
     );
@@ -60,20 +64,24 @@ export async function POST(request: Request) {
 
     const runData = await runResponse.json();
     const datasetId = runData.data?.defaultDatasetId;
+    const runStatus = runData.data?.status;
 
     await logActivity(user.id, "apify_scrape", {
       level: "info",
-      message: `Apify actor completed. Dataset: ${datasetId}. Fetching results...`,
+      message: `Apify actor ${runStatus}. Dataset: ${datasetId}. Fetching results...`,
       duration: Date.now() - startTime,
     });
 
     if (!datasetId) {
-      await logActivity(user.id, "apify_scrape", {
-        level: "error",
-        message: "No dataset returned from Apify",
-        success: false,
-      });
       return NextResponse.json({ error: "No dataset returned from Apify" }, { status: 500 });
+    }
+
+    // If still running, wait a bit more then fetch whatever is available
+    if (runStatus === "READY" || runStatus === "RUNNING") {
+      await logActivity(user.id, "apify_scrape", {
+        level: "warning",
+        message: "Actor still running. Fetching partial results...",
+      });
     }
 
     const dataResponse = await fetch(
@@ -87,53 +95,56 @@ export async function POST(request: Request) {
 
     const profiles = await dataResponse.json();
 
-    await logActivity(user.id, "apify_scrape", {
-      level: "info",
-      message: `Apify returned ${Array.isArray(profiles) ? profiles.length : 0} raw profiles. Processing...`,
-    });
-
     if (!Array.isArray(profiles) || profiles.length === 0) {
       await logActivity(user.id, "apify_scrape", {
         level: "warning",
-        message: "Apify returned 0 profiles. Actor may need different input format or no results matched.",
+        message: "Apify returned 0 profiles.",
         success: true,
         duration: Date.now() - startTime,
       });
       return NextResponse.json({ total: 0, created: 0, skipped: 0 });
     }
 
+    await logActivity(user.id, "apify_scrape", {
+      level: "info",
+      message: `Processing ${profiles.length} profiles from Apify...`,
+    });
+
     let created = 0;
     let skipped = 0;
 
     for (const profile of profiles) {
-      const profileUrl = (profile.profileUrl || profile.url || profile.linkedinUrl || profile.link || "")
+      // apimaestro actor returns nested structure: basic_info, experience, etc.
+      const basic = profile.basic_info || profile;
+      const profileUrl = (basic.profile_url || basic.profileUrl || basic.url || "")
         .toLowerCase().replace(/\/$/, "").split("?")[0];
+
       if (!profileUrl.includes("linkedin.com/in/")) {
         skipped++;
         continue;
       }
 
       const slug = profileUrl.match(/linkedin\.com\/in\/([^/?]+)/i)?.[1] || null;
-      const name = (profile.fullName || profile.name || `${profile.firstName || ""} ${profile.lastName || ""}`.trim() || "Unknown");
+      const name = basic.fullname || basic.fullName || basic.name || `${basic.first_name || ""} ${basic.last_name || ""}`.trim() || "Unknown";
+      const position = basic.headline || basic.title || null;
+
+      // Get company from experience if available
+      const exp = (profile.experience || [])[0];
+      const company = exp?.company_name || exp?.companyName || basic.company || null;
 
       try {
         await prisma.contact.create({
           data: {
             name,
-            position: profile.title || profile.headline || profile.currentJobTitle || profile.position || null,
-            company: profile.companyName || profile.company || profile.currentCompany || null,
+            position,
+            company,
             linkedinUrl: profileUrl.replace(/^https?:\/\/(www\.)?linkedin\.com/, "https://www.linkedin.com"),
             linkedinSlug: slug,
-            companyDescription: profile.about || profile.summary || null,
             source: "apify",
             userId: user.id,
           },
         });
         created++;
-        await logActivity(user.id, "apify_scrape", {
-          level: "success",
-          message: `Saved: ${name} — ${profile.title || "?"} @ ${profile.companyName || profile.company || "?"}`,
-        });
       } catch {
         skipped++;
       }
@@ -141,7 +152,7 @@ export async function POST(request: Request) {
 
     await logActivity(user.id, "apify_scrape", {
       level: "success",
-      message: `Apify scrape complete: ${created} saved, ${skipped} skipped, ${profiles.length} total`,
+      message: `Apify scrape complete: ${created} new contacts saved, ${skipped} skipped (dupes/invalid), ${profiles.length} total from actor`,
       success: true,
       duration: Date.now() - startTime,
     });

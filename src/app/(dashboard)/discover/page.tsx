@@ -11,15 +11,15 @@ import { toast } from "sonner";
 import { Loader2, Search, Sparkles, Plus } from "lucide-react";
 
 const KEYWORD_PRESETS = [
-  '"revenue-based financing" founder CEO',
-  '"embedded lending" OR "embedded finance" co-founder',
-  '"invoice financing" "head of capital" OR CFO',
-  '"BNPL" B2B founder CEO',
-  '"merchant cash advance" founder',
-  '"supply chain finance" "capital markets"',
-  '"working capital" fintech CEO founder',
-  '"trade finance" fintech "head of"',
-  '"specialty lending" "capital markets" director',
+  "CEO",
+  "Co-Founder",
+  "CFO",
+  "Head of Capital Markets",
+  "VP Lending",
+  "Chief Risk Officer",
+  "Head of Partnerships",
+  "Director of Finance",
+  "Managing Director",
 ];
 
 export default function DiscoverPage() {
@@ -135,7 +135,7 @@ export default function DiscoverPage() {
           <Card>
             <CardHeader>
               <CardTitle>Bulk Scrape via Apify</CardTitle>
-              <CardDescription>Search LinkedIn profiles using keywords</CardDescription>
+              <CardDescription>Search LinkedIn profiles by job title and location</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
@@ -163,7 +163,7 @@ export default function DiscoverPage() {
               <div className="space-y-2">
                 <Label>Geography</Label>
                 <div className="flex gap-2">
-                  {["UK", "Europe", "US", "APAC"].map((g) => (
+                  {["United Kingdom", "United States", "Europe", "Singapore"].map((g) => (
                     <Button
                       key={g}
                       variant={geography === g ? "default" : "outline"}
@@ -200,7 +200,7 @@ export default function DiscoverPage() {
           <Card>
             <CardHeader>
               <CardTitle>LinkedIn Voyager Search</CardTitle>
-              <CardDescription>Search directly via LinkedIn API (requires active cookie)</CardDescription>
+              <CardDescription>Search directly via LinkedIn API. Note: may fail from cloud servers due to LinkedIn IP restrictions.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
