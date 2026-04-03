@@ -7,6 +7,17 @@ Version increments by +0.1 on every merge to `main`.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-04-03
+
+### Changed
+- **Database**: Migrated from SQLite to PostgreSQL via Neon (Vercel integration)
+- **Prisma adapter**: Replaced dual libSQL/Pg adapter with Pg-only (`@prisma/adapter-pg`)
+- **Schema provider**: Changed from `sqlite` to `postgresql` in Prisma schema
+- **Env vars**: App reads `DATABASE1_DATABASE_URL` (Neon/Vercel) with fallback to `DATABASE_URL`
+
+### Removed
+- SQLite/libSQL adapter dependency for production (local dev now uses Neon too)
+
 ## [0.1.0] - 2026-04-02
 
 ### Added

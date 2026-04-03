@@ -1,19 +1,20 @@
 import { PrismaClient } from "@/generated/prisma/client";
-import { PrismaLibSql } from "@prisma/adapter-libsql";
 import { PrismaPg } from "@prisma/adapter-pg";
 
 const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
 
+function getDatabaseUrl(): string {
+  return (
+    process.env.DATABASE1_DATABASE_URL ||
+    process.env.DATABASE_URL ||
+    ""
+  );
+}
+
 function createPrismaClient() {
-  const url = process.env.DATABASE_URL || "file:./prisma/dev.db";
-
-  if (url.startsWith("postgres://") || url.startsWith("postgresql://")) {
-    const adapter = new PrismaPg({ connectionString: url });
-    return new PrismaClient({ adapter });
-  }
-
-  // SQLite / libSQL for local dev
-  const adapter = new PrismaLibSql({ url });
+  const url = getDatabaseUrl();
+  if (!url) throw new Error("No DATABASE_URL configured");
+  const adapter = new PrismaPg({ connectionString: url });
   return new PrismaClient({ adapter });
 }
 

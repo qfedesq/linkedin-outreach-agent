@@ -1,4 +1,4 @@
-# LinkedIn Outreach Agent V0.1
+# LinkedIn Outreach Agent V0.2
 
 Autonomous LinkedIn B2B outreach agent for **arenas.fi's Sky Protocol** $100M stablecoin liquidity facility. Manages the full daily outreach cycle: discover prospects, send personalized connection requests, track connections, send follow-ups, and detect replies — all server-side via LinkedIn's Voyager API.
 
