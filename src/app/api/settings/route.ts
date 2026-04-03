@@ -1,15 +1,33 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser, unauthorized } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
 import { encrypt, decrypt } from "@/lib/encryption";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const user = await getAuthUser();
   if (!user) return unauthorized();
 
   const settings = user.settings;
   if (!settings) {
     return NextResponse.json({});
+  }
+
+  // If ?reveal=true, decrypt and return actual values (for the eye toggle)
+  const reveal = request.nextUrl.searchParams.get("reveal") === "true";
+
+  if (reveal) {
+    return NextResponse.json({
+      linkedinLiAt: settings.linkedinLiAt ? decrypt(settings.linkedinLiAt) : null,
+      linkedinCookieValid: settings.linkedinCookieValid,
+      linkedinLastValidated: settings.linkedinLastValidated,
+      linkedinProfileUrn: settings.linkedinProfileUrn,
+      apifyApiToken: settings.apifyApiToken ? decrypt(settings.apifyApiToken) : null,
+      openrouterApiKey: settings.openrouterApiKey ? decrypt(settings.openrouterApiKey) : null,
+      googleSheetsId: settings.googleSheetsId,
+      googleServiceAccount: settings.googleServiceAccount ? decrypt(settings.googleServiceAccount) : null,
+      calendarBookingUrl: settings.calendarBookingUrl,
+      preferredModel: settings.preferredModel,
+    });
   }
 
   return NextResponse.json({

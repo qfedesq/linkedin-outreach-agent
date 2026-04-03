@@ -123,7 +123,30 @@ export default function SettingsPage() {
     }
   };
 
-  const toggle = (key: string) => setShowSecrets((prev) => ({ ...prev, [key]: !prev[key] }));
+  const [revealedValues, setRevealedValues] = useState<Record<string, string>>({});
+
+  const toggle = async (key: string) => {
+    const newState = !showSecrets[key];
+    setShowSecrets((prev) => ({ ...prev, [key]: newState }));
+
+    // Fetch decrypted values from server when revealing
+    if (newState && !revealedValues[key]) {
+      try {
+        const res = await fetch("/api/settings?reveal=true");
+        const data = await res.json();
+        const map: Record<string, string> = {};
+        if (data.linkedinLiAt) map.linkedinLiAt = data.linkedinLiAt;
+        if (data.apifyApiToken) map.apifyApiToken = data.apifyApiToken;
+        if (data.openrouterApiKey) map.openrouterApiKey = data.openrouterApiKey;
+        if (data.googleServiceAccount) map.googleServiceAccount = data.googleServiceAccount;
+        setRevealedValues((prev) => ({ ...prev, ...map }));
+        // Also update settings state so the input shows the real value
+        setSettings((prev) => ({ ...prev, ...map }));
+      } catch {
+        // ignore
+      }
+    }
+  };
 
   const SecretInput = ({ id, label, value, onChange }: { id: string; label: string; value: string; onChange: (v: string) => void }) => (
     <div className="space-y-2">
