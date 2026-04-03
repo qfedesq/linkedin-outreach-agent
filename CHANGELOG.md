@@ -7,6 +7,26 @@ Version increments by +0.1 on every merge to `main`.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-04-03
+
+### Added
+- **Command Center** (`/command`): Unified 7-step pipeline in one screen
+  - Step 1: Discover (Apify async scrape with polling)
+  - Step 2: Enrich (LinkedIn profile data)
+  - Step 3: Score (LLM ICP classification)
+  - Step 4: Prepare Invites (LLM connection notes)
+  - Steps 5-7: Check Connections, Follow-ups, Inbox Scan
+  - "Run Full Daily Cycle" button executes steps 5-7 sequentially
+  - Live Feed panel shows all activity in real-time (auto-refresh 5s)
+  - Pipeline stats bar showing counts per stage
+- **Follow-up preparation endpoint** (`POST /api/followups/prepare`): Generates follow-up messages via LLM for connected contacts 3+ days old
+- **Granular logging**: Score, Enrich, Follow-up generation endpoints all log step-by-step activity
+
+### Changed
+- Apify route split into POST (start) + GET (poll) for async operation from Vercel
+- ICP Scoring endpoint logs each contact result to execution logs
+- Contact enrichment logs each profile fetch with timing
+
 ## [0.4.0] - 2026-04-03
 
 ### Added
