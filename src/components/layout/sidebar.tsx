@@ -20,8 +20,7 @@ import { APP_VERSION } from "@/lib/constants";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/run", label: "Run", icon: Play },
-  { href: "/live", label: "Live Watch", icon: Activity },
+  { href: "/command", label: "Command Center", icon: Activity },
   { href: "/discover", label: "Discover", icon: Search },
   { href: "/invites", label: "Invites", icon: Send },
   { href: "/followups", label: "Follow-ups", icon: UserCheck },
