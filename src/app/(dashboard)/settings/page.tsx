@@ -11,16 +11,12 @@ import { toast } from "sonner";
 import { Eye, EyeOff, CheckCircle, XCircle, Loader2 } from "lucide-react";
 
 interface Settings {
-  linkedinLiAt: string;
-  linkedinCookieValid: boolean;
-  linkedinLastValidated: string | null;
-  linkedinProfileUrn: string | null;
+  unipileApiKey: string;
+  unipileAccountId: string;
   apifyApiToken: string;
   openrouterApiKey: string;
-  googleSheetsId: string;
-  googleServiceAccount: string;
-  calendarBookingUrl: string;
   preferredModel: string;
+  calendarBookingUrl: string;
   campaignName: string;
   campaignDescription: string;
   icpDefinition: string;
@@ -32,208 +28,95 @@ interface Settings {
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<Settings>({
-    linkedinLiAt: "",
-    linkedinCookieValid: false,
-    linkedinLastValidated: null,
-    linkedinProfileUrn: null,
-    apifyApiToken: "",
-    openrouterApiKey: "",
-    googleSheetsId: "",
-    googleServiceAccount: "",
-    calendarBookingUrl: "https://calendar.app.google/k8XEhkPnX6sc2GdW9",
+    unipileApiKey: "", unipileAccountId: "",
+    apifyApiToken: "", openrouterApiKey: "",
     preferredModel: "anthropic/claude-sonnet-4",
+    calendarBookingUrl: "https://calendar.app.google/k8XEhkPnX6sc2GdW9",
     campaignName: "Sky Protocol $100M Facility",
-    campaignDescription: "",
-    icpDefinition: "",
-    strategyNotes: "",
-    dailyInviteLimit: 20,
-    followupDelayDays: 3,
-    autopilotEnabled: false,
+    campaignDescription: "", icpDefinition: "", strategyNotes: "",
+    dailyInviteLimit: 20, followupDelayDays: 3, autopilotEnabled: false,
   });
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
   const [testing, setTesting] = useState<Record<string, boolean>>({});
   const [testResults, setTestResults] = useState<Record<string, { success: boolean; message: string }>>({});
   const [saving, setSaving] = useState(false);
-  const [linkedinProfile, setLinkedinProfile] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/settings")
-      .then((r) => r.json())
-      .then((data) => {
-        setSettings((prev) => ({ ...prev, ...data }));
-      });
+    fetch("/api/settings?reveal=true")
+      .then(r => r.json())
+      .then(data => setSettings(prev => ({ ...prev, ...data })))
+      .catch(() => {});
   }, []);
 
   const handleSave = async () => {
     setSaving(true);
     try {
       const res = await fetch("/api/settings", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        method: "PUT", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(settings),
       });
       if (res.ok) toast.success("Settings saved");
-      else toast.error("Failed to save settings");
-    } catch {
-      toast.error("Failed to save settings");
-    } finally {
-      setSaving(false);
-    }
+      else toast.error("Failed to save");
+    } catch { toast.error("Failed to save"); }
+    finally { setSaving(false); }
   };
 
-  const testLinkedin = async () => {
-    setTesting((prev) => ({ ...prev, linkedin: true }));
+  const testService = async (id: string, url: string) => {
+    setTesting(p => ({ ...p, [id]: true }));
     try {
-      const res = await fetch("/api/settings/test-linkedin", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ liAt: settings.linkedinLiAt !== "••••••••" ? settings.linkedinLiAt : undefined }),
-      });
+      const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
       const data = await res.json();
-      if (data.success) {
-        setLinkedinProfile(data.profile.name);
-        setTestResults((prev) => ({ ...prev, linkedin: { success: true, message: `Connected as ${data.profile.name}` } }));
-      } else {
-        setTestResults((prev) => ({ ...prev, linkedin: { success: false, message: data.error } }));
-      }
-    } catch {
-      setTestResults((prev) => ({ ...prev, linkedin: { success: false, message: "Connection failed" } }));
-    } finally {
-      setTesting((prev) => ({ ...prev, linkedin: false }));
-    }
+      setTestResults(p => ({ ...p, [id]: { success: data.success, message: data.success ? (data.profile?.name || data.profile || "Connected") : data.error } }));
+    } catch { setTestResults(p => ({ ...p, [id]: { success: false, message: "Failed" } })); }
+    finally { setTesting(p => ({ ...p, [id]: false })); }
   };
 
-  const testApify = async () => {
-    setTesting((prev) => ({ ...prev, apify: true }));
-    try {
-      const res = await fetch("/api/settings/test-apify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: settings.apifyApiToken !== "••••••••" ? settings.apifyApiToken : undefined }),
-      });
-      const data = await res.json();
-      setTestResults((prev) => ({ ...prev, apify: { success: data.success, message: data.success ? "Connected" : data.error } }));
-    } catch {
-      setTestResults((prev) => ({ ...prev, apify: { success: false, message: "Connection failed" } }));
-    } finally {
-      setTesting((prev) => ({ ...prev, apify: false }));
-    }
-  };
-
-  const testOpenRouter = async () => {
-    setTesting((prev) => ({ ...prev, openrouter: true }));
-    try {
-      const res = await fetch("/api/settings/test-openrouter", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ key: settings.openrouterApiKey !== "••••••••" ? settings.openrouterApiKey : undefined }),
-      });
-      const data = await res.json();
-      setTestResults((prev) => ({ ...prev, openrouter: { success: data.success, message: data.success ? "Connected" : data.error } }));
-    } catch {
-      setTestResults((prev) => ({ ...prev, openrouter: { success: false, message: "Connection failed" } }));
-    } finally {
-      setTesting((prev) => ({ ...prev, openrouter: false }));
-    }
-  };
-
-  const [revealedValues, setRevealedValues] = useState<Record<string, string>>({});
-
-  const toggle = async (key: string) => {
-    const newState = !showSecrets[key];
-    setShowSecrets((prev) => ({ ...prev, [key]: newState }));
-
-    // Fetch decrypted values from server when revealing
-    if (newState && !revealedValues[key]) {
-      try {
-        const res = await fetch("/api/settings?reveal=true");
-        const data = await res.json();
-        const map: Record<string, string> = {};
-        if (data.linkedinLiAt) map.linkedinLiAt = data.linkedinLiAt;
-        if (data.apifyApiToken) map.apifyApiToken = data.apifyApiToken;
-        if (data.openrouterApiKey) map.openrouterApiKey = data.openrouterApiKey;
-        if (data.googleServiceAccount) map.googleServiceAccount = data.googleServiceAccount;
-        setRevealedValues((prev) => ({ ...prev, ...map }));
-        // Also update settings state so the input shows the real value
-        setSettings((prev) => ({ ...prev, ...map }));
-      } catch {
-        // ignore
-      }
-    }
-  };
+  const toggle = (k: string) => setShowSecrets(p => ({ ...p, [k]: !p[k] }));
 
   const SecretInput = ({ id, label, value, onChange }: { id: string; label: string; value: string; onChange: (v: string) => void }) => (
     <div className="space-y-2">
       <Label htmlFor={id}>{label}</Label>
-      <div className="flex gap-2">
-        <div className="relative flex-1">
-          <Input
-            id={id}
-            type={showSecrets[id] ? "text" : "password"}
-            value={value || ""}
-            onChange={(e) => onChange(e.target.value)}
-            className="pr-10"
-          />
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="absolute right-0 top-0 h-full"
-            onClick={() => toggle(id)}
-          >
-            {showSecrets[id] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-          </Button>
-        </div>
+      <div className="relative">
+        <Input id={id} type={showSecrets[id] ? "text" : "password"} value={value || ""} onChange={e => onChange(e.target.value)} className="pr-10" />
+        <Button type="button" variant="ghost" size="icon" className="absolute right-0 top-0 h-full" onClick={() => toggle(id)}>
+          {showSecrets[id] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+        </Button>
       </div>
     </div>
   );
 
   const TestResult = ({ id }: { id: string }) => {
-    const result = testResults[id];
-    if (!result) return null;
-    return (
-      <div className={`flex items-center gap-2 text-sm ${result.success ? "text-green-600" : "text-red-600"}`}>
-        {result.success ? <CheckCircle className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
-        {result.message}
-      </div>
-    );
+    const r = testResults[id]; if (!r) return null;
+    return <div className={`flex items-center gap-2 text-sm ${r.success ? "text-green-500" : "text-red-500"}`}>
+      {r.success ? <CheckCircle className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}{r.message}
+    </div>;
   };
 
   return (
     <div className="max-w-2xl space-y-6">
       <div>
         <h1 className="text-2xl font-bold">Settings</h1>
-        <p className="text-muted-foreground">Configure credentials and preferences</p>
+        <p className="text-muted-foreground">Configure services and campaign parameters</p>
       </div>
 
-      {/* LinkedIn Cookie */}
+      {/* LinkedIn via Unipile */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             LinkedIn Connection
-            {settings.linkedinCookieValid && (
-              <Badge variant="outline" className="text-green-600 border-green-600">Connected</Badge>
-            )}
+            {testResults.linkedin?.success && <Badge className="bg-success/10 text-success border-success/20">Connected</Badge>}
           </CardTitle>
-          <CardDescription>
-            Open LinkedIn in Chrome → DevTools (F12) → Application → Cookies → linkedin.com → copy li_at value.
-            Cookies typically last 6-12 months on Premium accounts.
-          </CardDescription>
+          <CardDescription>Powered by Unipile — persistent session, no manual cookie refresh needed.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <SecretInput
-            id="linkedinLiAt"
-            label="li_at Cookie"
-            value={settings.linkedinLiAt || ""}
-            onChange={(v) => setSettings((prev) => ({ ...prev, linkedinLiAt: v }))}
-          />
-          {linkedinProfile && (
-            <p className="text-sm text-green-600">Connected as {linkedinProfile}</p>
-          )}
+          <SecretInput id="unipileApiKey" label="Unipile API Key" value={settings.unipileApiKey || ""} onChange={v => setSettings(p => ({ ...p, unipileApiKey: v }))} />
+          <div className="space-y-2">
+            <Label>Account ID</Label>
+            <Input value={settings.unipileAccountId || ""} onChange={e => setSettings(p => ({ ...p, unipileAccountId: e.target.value }))} placeholder="e.g., CNyD9GLrR5WUtv1UuWbGrQ" />
+          </div>
           <div className="flex items-center gap-4">
-            <Button onClick={testLinkedin} disabled={testing.linkedin} size="sm">
-              {testing.linkedin && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Test Connection
+            <Button onClick={() => testService("linkedin", "/api/settings/test-linkedin")} disabled={testing.linkedin} size="sm">
+              {testing.linkedin && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Test Connection
             </Button>
             <TestResult id="linkedin" />
           </div>
@@ -242,21 +125,12 @@ export default function SettingsPage() {
 
       {/* Apify */}
       <Card>
-        <CardHeader>
-          <CardTitle>Apify</CardTitle>
-          <CardDescription>API token for LinkedIn prospect scraping</CardDescription>
-        </CardHeader>
+        <CardHeader><CardTitle>Apify</CardTitle><CardDescription>Prospect discovery via LinkedIn scraping</CardDescription></CardHeader>
         <CardContent className="space-y-4">
-          <SecretInput
-            id="apifyApiToken"
-            label="API Token"
-            value={settings.apifyApiToken || ""}
-            onChange={(v) => setSettings((prev) => ({ ...prev, apifyApiToken: v }))}
-          />
+          <SecretInput id="apifyApiToken" label="API Token" value={settings.apifyApiToken || ""} onChange={v => setSettings(p => ({ ...p, apifyApiToken: v }))} />
           <div className="flex items-center gap-4">
-            <Button onClick={testApify} disabled={testing.apify} size="sm">
-              {testing.apify && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Test Connection
+            <Button onClick={() => testService("apify", "/api/settings/test-apify")} disabled={testing.apify} size="sm">
+              {testing.apify && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Test Connection
             </Button>
             <TestResult id="apify" />
           </div>
@@ -265,127 +139,18 @@ export default function SettingsPage() {
 
       {/* OpenRouter */}
       <Card>
-        <CardHeader>
-          <CardTitle>OpenRouter</CardTitle>
-          <CardDescription>LLM API for message personalization</CardDescription>
-        </CardHeader>
+        <CardHeader><CardTitle>OpenRouter</CardTitle><CardDescription>LLM for message personalization and ICP scoring</CardDescription></CardHeader>
         <CardContent className="space-y-4">
-          <SecretInput
-            id="openrouterApiKey"
-            label="API Key"
-            value={settings.openrouterApiKey || ""}
-            onChange={(v) => setSettings((prev) => ({ ...prev, openrouterApiKey: v }))}
-          />
+          <SecretInput id="openrouterApiKey" label="API Key" value={settings.openrouterApiKey || ""} onChange={v => setSettings(p => ({ ...p, openrouterApiKey: v }))} />
           <div className="space-y-2">
-            <Label htmlFor="preferredModel">Preferred Model</Label>
-            <Input
-              id="preferredModel"
-              value={settings.preferredModel}
-              onChange={(e) => setSettings((prev) => ({ ...prev, preferredModel: e.target.value }))}
-              placeholder="anthropic/claude-sonnet-4"
-            />
+            <Label>Preferred Model</Label>
+            <Input value={settings.preferredModel} onChange={e => setSettings(p => ({ ...p, preferredModel: e.target.value }))} />
           </div>
           <div className="flex items-center gap-4">
-            <Button onClick={testOpenRouter} disabled={testing.openrouter} size="sm">
-              {testing.openrouter && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Test Connection
+            <Button onClick={() => testService("openrouter", "/api/settings/test-openrouter")} disabled={testing.openrouter} size="sm">
+              {testing.openrouter && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Test Connection
             </Button>
             <TestResult id="openrouter" />
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Google Sheets */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Google Sheets</CardTitle>
-          <CardDescription>Sync with your tracker spreadsheet</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="googleSheetsId">Spreadsheet ID</Label>
-            <Input
-              id="googleSheetsId"
-              value={settings.googleSheetsId || ""}
-              onChange={(e) => setSettings((prev) => ({ ...prev, googleSheetsId: e.target.value }))}
-              placeholder="Extract from the Google Sheets URL"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="googleServiceAccount">Service Account JSON</Label>
-            <Textarea
-              id="googleServiceAccount"
-              value={settings.googleServiceAccount || ""}
-              onChange={(e) => setSettings((prev) => ({ ...prev, googleServiceAccount: e.target.value }))}
-              placeholder='Paste the full JSON key file content here'
-              rows={4}
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Calendar */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Calendar</CardTitle>
-          <CardDescription>Booking link used in follow-up messages</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-2">
-            <Label htmlFor="calendarBookingUrl">Booking URL</Label>
-            <Input
-              id="calendarBookingUrl"
-              value={settings.calendarBookingUrl}
-              onChange={(e) => setSettings((prev) => ({ ...prev, calendarBookingUrl: e.target.value }))}
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Unipile (Persistent LinkedIn) */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Unipile (Persistent LinkedIn)</CardTitle>
-          <CardDescription>
-            Unipile provides persistent LinkedIn API access without manual cookie refresh.
-            Get your DSN and API key from <a href="https://dashboard.unipile.com" target="_blank" className="text-primary underline">dashboard.unipile.com</a>
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <SecretInput
-              id="unipileApiKey"
-              label="Unipile API Key"
-              value={(settings as unknown as Record<string, string>).unipileApiKey || ""}
-              onChange={(v) => setSettings((prev) => ({ ...prev, unipileApiKey: v } as Settings))}
-            />
-            <div className="space-y-2">
-              <Label>Account ID</Label>
-              <Input
-                value={(settings as unknown as Record<string, string>).unipileAccountId || ""}
-                onChange={(e) => setSettings((prev) => ({ ...prev, unipileAccountId: e.target.value } as Settings))}
-                placeholder="e.g., CNyD9GLrR5WUtv1UuWbGrQ"
-              />
-            </div>
-          </div>
-          <div className="flex items-center gap-4">
-            <Button onClick={async () => {
-              setTesting(prev => ({ ...prev, unipile: true }));
-              try {
-                const res = await fetch("/api/settings/test-unipile", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({}),
-                });
-                const data = await res.json();
-                setTestResults(prev => ({ ...prev, unipile: { success: data.success, message: data.success ? `Connected: ${data.profile}` : data.error } }));
-              } catch { setTestResults(prev => ({ ...prev, unipile: { success: false, message: "Connection failed" } })); }
-              finally { setTesting(prev => ({ ...prev, unipile: false })); }
-            }} disabled={testing.unipile} size="sm">
-              {testing.unipile && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Test Connection
-            </Button>
-            <TestResult id="unipile" />
           </div>
         </CardContent>
       </Card>
@@ -393,89 +158,27 @@ export default function SettingsPage() {
       {/* Campaign Configuration */}
       <Card>
         <CardHeader>
-          <CardTitle>Campaign Configuration</CardTitle>
-          <CardDescription>Define your outreach campaign parameters. The agent uses these to personalize messages.</CardDescription>
+          <CardTitle>Campaign</CardTitle>
+          <CardDescription>Define your outreach campaign. The agent uses these to personalize messages.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Campaign Name</Label>
-              <Input
-                value={settings.campaignName}
-                onChange={(e) => setSettings((prev) => ({ ...prev, campaignName: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Calendar Booking URL</Label>
-              <Input
-                value={settings.calendarBookingUrl}
-                onChange={(e) => setSettings((prev) => ({ ...prev, calendarBookingUrl: e.target.value }))}
-              />
-            </div>
+            <div className="space-y-2"><Label>Campaign Name</Label><Input value={settings.campaignName} onChange={e => setSettings(p => ({ ...p, campaignName: e.target.value }))} /></div>
+            <div className="space-y-2"><Label>Calendar Booking URL</Label><Input value={settings.calendarBookingUrl} onChange={e => setSettings(p => ({ ...p, calendarBookingUrl: e.target.value }))} /></div>
           </div>
-          <div className="space-y-2">
-            <Label>Campaign Description</Label>
-            <Textarea
-              value={settings.campaignDescription || ""}
-              onChange={(e) => setSettings((prev) => ({ ...prev, campaignDescription: e.target.value }))}
-              placeholder="Brief description of the campaign, product, and value proposition..."
-              rows={3}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>ICP Definition</Label>
-            <Textarea
-              value={settings.icpDefinition || ""}
-              onChange={(e) => setSettings((prev) => ({ ...prev, icpDefinition: e.target.value }))}
-              placeholder="Define the ideal customer profile: industries, roles, company sizes, signals..."
-              rows={4}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Outreach Strategy Notes</Label>
-            <Textarea
-              value={settings.strategyNotes || ""}
-              onChange={(e) => setSettings((prev) => ({ ...prev, strategyNotes: e.target.value }))}
-              placeholder="Instructions for the agent: tone, messaging style, what to emphasize..."
-              rows={4}
-            />
-          </div>
+          <div className="space-y-2"><Label>Campaign Description</Label><Textarea value={settings.campaignDescription || ""} onChange={e => setSettings(p => ({ ...p, campaignDescription: e.target.value }))} placeholder="Brief description of the campaign..." rows={3} /></div>
+          <div className="space-y-2"><Label>ICP Definition</Label><Textarea value={settings.icpDefinition || ""} onChange={e => setSettings(p => ({ ...p, icpDefinition: e.target.value }))} placeholder="Industries, roles, company sizes, signals..." rows={3} /></div>
+          <div className="space-y-2"><Label>Strategy Notes (agent reads these)</Label><Textarea value={settings.strategyNotes || ""} onChange={e => setSettings(p => ({ ...p, strategyNotes: e.target.value }))} placeholder="Tone, messaging style, what to emphasize..." rows={3} /></div>
           <div className="grid grid-cols-3 gap-4">
-            <div className="space-y-2">
-              <Label>Daily Invite Limit</Label>
-              <Input
-                type="number"
-                value={settings.dailyInviteLimit}
-                onChange={(e) => setSettings((prev) => ({ ...prev, dailyInviteLimit: parseInt(e.target.value) || 20 }))}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Follow-up Delay (days)</Label>
-              <Input
-                type="number"
-                value={settings.followupDelayDays}
-                onChange={(e) => setSettings((prev) => ({ ...prev, followupDelayDays: parseInt(e.target.value) || 3 }))}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Auto-pilot Mode</Label>
-              <div className="flex items-center gap-2 pt-2">
-                <input
-                  type="checkbox"
-                  checked={settings.autopilotEnabled}
-                  onChange={(e) => setSettings((prev) => ({ ...prev, autopilotEnabled: e.target.checked }))}
-                  className="rounded"
-                />
-                <span className="text-sm text-muted-foreground">Run daily cycle automatically</span>
-              </div>
-            </div>
+            <div className="space-y-2"><Label>Daily Invite Limit</Label><Input type="number" value={settings.dailyInviteLimit} onChange={e => setSettings(p => ({ ...p, dailyInviteLimit: parseInt(e.target.value) || 20 }))} /></div>
+            <div className="space-y-2"><Label>Follow-up Delay (days)</Label><Input type="number" value={settings.followupDelayDays} onChange={e => setSettings(p => ({ ...p, followupDelayDays: parseInt(e.target.value) || 3 }))} /></div>
+            <div className="space-y-2"><Label>Auto-pilot</Label><div className="flex items-center gap-2 pt-2"><input type="checkbox" checked={settings.autopilotEnabled} onChange={e => setSettings(p => ({ ...p, autopilotEnabled: e.target.checked }))} className="rounded" /><span className="text-sm text-muted-foreground">Run daily automatically</span></div></div>
           </div>
         </CardContent>
       </Card>
 
       <Button onClick={handleSave} disabled={saving} size="lg" className="w-full">
-        {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-        Save Settings
+        {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save Settings
       </Button>
     </div>
   );

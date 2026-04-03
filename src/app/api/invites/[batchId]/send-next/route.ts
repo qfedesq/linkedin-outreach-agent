@@ -1,17 +1,15 @@
 import { NextResponse } from "next/server";
 import { getAuthUser, unauthorized } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
-import { decrypt } from "@/lib/encryption";
-import { createLinkedInAPI } from "@/lib/linkedin";
+import { requireLinkedIn } from "@/lib/linkedin-provider";
+import { logActivity } from "@/lib/activity-log";
 
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ batchId: string }> }
 ) {
   const user = await getAuthUser();
-  if (!user?.settings?.linkedinLiAt || !user.settings.linkedinCsrfToken) {
-    return unauthorized();
-  }
+  if (!user?.settings) return unauthorized();
 
   const { batchId } = await params;
 
@@ -19,100 +17,65 @@ export async function POST(
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const todayCount = await prisma.inviteBatchItem.count({
-    where: {
-      sent: true,
-      sentAt: { gte: today },
-      batch: { userId: user.id },
-    },
+    where: { sent: true, sentAt: { gte: today }, batch: { userId: user.id } },
   });
-
-  if (todayCount >= 20) {
+  if (todayCount >= (user.settings.dailyInviteLimit || 20)) {
     return NextResponse.json({ error: "Daily cap reached", done: true }, { status: 429 });
   }
 
   // Get next unsent approved item
   const item = await prisma.inviteBatchItem.findFirst({
-    where: {
-      batchId,
-      approved: true,
-      skipped: false,
-      sent: false,
-      batch: { userId: user.id },
-    },
+    where: { batchId, approved: true, skipped: false, sent: false, batch: { userId: user.id } },
     orderBy: { id: "asc" },
   });
 
   if (!item) {
-    // All done
-    await prisma.inviteBatch.updateMany({
-      where: { id: batchId, userId: user.id },
-      data: { status: "SENT" },
-    });
+    await prisma.inviteBatch.updateMany({ where: { id: batchId, userId: user.id }, data: { status: "SENT" } });
     return NextResponse.json({ done: true });
   }
 
   const contact = await prisma.contact.findUnique({ where: { id: item.contactId } });
-  if (!contact?.linkedinProfileId || !contact.linkedinTrackingId) {
-    await prisma.inviteBatchItem.update({
-      where: { id: item.id },
-      data: { sent: true, sendResult: "profile_not_found" },
-    });
-    return NextResponse.json({ item: { ...item, sendResult: "profile_not_found" }, done: false });
+  if (!contact) {
+    await prisma.inviteBatchItem.update({ where: { id: item.id }, data: { sent: true, sendResult: "contact_not_found" } });
+    return NextResponse.json({ item: { ...item, sendResult: "contact_not_found" }, done: false });
   }
 
-  const liAt = decrypt(user.settings.linkedinLiAt);
-  const csrf = decrypt(user.settings.linkedinCsrfToken);
-  const api = createLinkedInAPI(liAt, csrf);
+  let linkedin;
+  try { linkedin = requireLinkedIn(user.settings); } catch (e) {
+    return NextResponse.json({ error: (e as Error).message }, { status: 400 });
+  }
 
   const message = item.editedMessage || item.draftMessage;
 
   try {
-    const result = await api.invitations.sendInvitation(
-      contact.linkedinProfileId,
-      contact.linkedinTrackingId,
-      message
-    );
-
-    const sendResult = result.success ? "success" : "failed";
-
-    await prisma.inviteBatchItem.update({
-      where: { id: item.id },
-      data: { sent: true, sentAt: new Date(), sendResult },
-    });
-
-    if (result.success) {
-      await prisma.contact.update({
-        where: { id: contact.id },
-        data: { status: "INVITED", inviteSentDate: new Date(), connectionMessage: message },
-      });
+    // Use the LinkedIn slug or profileId as the provider_id for Unipile
+    const providerId = contact.linkedinProfileId || contact.linkedinEntityUrn || contact.linkedinSlug || "";
+    if (!providerId) {
+      await prisma.inviteBatchItem.update({ where: { id: item.id }, data: { sent: true, sendResult: "no_provider_id" } });
+      return NextResponse.json({ item: { ...item, sendResult: "no_provider_id", contact }, done: false });
     }
 
-    // Log
-    await prisma.executionLog.create({
-      data: {
-        action: "send_invite",
-        contactId: contact.id,
-        request: JSON.stringify({ profileId: contact.linkedinProfileId, messageLength: message.length }),
-        response: JSON.stringify(result),
-        success: result.success,
-        errorCode: result.error || null,
-        userId: user.id,
-      },
-    });
+    await linkedin.sendInvitation(providerId, message);
 
-    return NextResponse.json({
-      item: { ...item, sendResult, contact },
-      done: false,
-    });
-  } catch (error) {
     await prisma.inviteBatchItem.update({
       where: { id: item.id },
-      data: { sent: true, sendResult: "failed" },
+      data: { sent: true, sentAt: new Date(), sendResult: "success" },
+    });
+    await prisma.contact.update({
+      where: { id: contact.id },
+      data: { status: "INVITED", inviteSentDate: new Date(), connectionMessage: message },
     });
 
-    return NextResponse.json({
-      item: { ...item, sendResult: "failed", error: (error as Error).message },
-      done: false,
+    await logActivity(user.id, "send_invite", {
+      level: "success", message: `Invite sent to ${contact.name} via Unipile`, contactId: contact.id,
     });
+
+    return NextResponse.json({ item: { ...item, sendResult: "success", contact }, done: false });
+  } catch (error) {
+    await prisma.inviteBatchItem.update({ where: { id: item.id }, data: { sent: true, sendResult: "failed" } });
+    await logActivity(user.id, "send_invite", {
+      level: "error", message: `Invite failed for ${contact.name}: ${(error as Error).message}`, success: false, contactId: contact.id,
+    });
+    return NextResponse.json({ item: { ...item, sendResult: "failed", error: (error as Error).message }, done: false });
   }
 }

@@ -1,54 +1,42 @@
 import { NextResponse } from "next/server";
 import { getAuthUser, unauthorized } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
-import { decrypt } from "@/lib/encryption";
-import { createLinkedInAPI } from "@/lib/linkedin";
+import { requireLinkedIn } from "@/lib/linkedin-provider";
+import { logActivity } from "@/lib/activity-log";
 
 export async function POST(request: Request) {
   const user = await getAuthUser();
-  if (!user?.settings?.linkedinLiAt || !user.settings.linkedinCsrfToken) {
-    return unauthorized();
+  if (!user?.settings) return unauthorized();
+
+  let linkedin;
+  try { linkedin = requireLinkedIn(user.settings); } catch (e) {
+    return NextResponse.json({ error: (e as Error).message }, { status: 400 });
   }
 
   const body = await request.json();
   const { messages }: { messages: { contactId: string; message: string }[] } = body;
-
-  const liAt = decrypt(user.settings.linkedinLiAt);
-  const csrf = decrypt(user.settings.linkedinCsrfToken);
-  const api = createLinkedInAPI(liAt, csrf);
-
   const results = [];
 
   for (const { contactId, message } of messages) {
     const contact = await prisma.contact.findFirst({ where: { id: contactId, userId: user.id } });
-    if (!contact?.linkedinEntityUrn) continue;
+    if (!contact?.linkedinProfileId) continue;
 
     try {
-      const result = await api.messaging.sendMessage(
-        contact.linkedinEntityUrn,
-        message,
-        user.settings.linkedinProfileUrn || ""
-      );
+      await linkedin.sendMessage([contact.linkedinProfileId], message);
 
-      if (result.success) {
-        await prisma.contact.update({
-          where: { id: contactId },
-          data: { status: "FOLLOWED_UP", followupSentDate: new Date() },
-        });
-      }
-
-      await prisma.executionLog.create({
-        data: {
-          action: "send_message",
-          contactId,
-          success: result.success,
-          errorCode: result.error || null,
-          userId: user.id,
-        },
+      await prisma.contact.update({
+        where: { id: contactId },
+        data: { status: "FOLLOWED_UP", followupSentDate: new Date() },
       });
 
-      results.push({ contactId, success: result.success });
+      await logActivity(user.id, "send_message", {
+        level: "success", message: `Follow-up sent to ${contact.name} via Unipile`, contactId,
+      });
+      results.push({ contactId, success: true });
     } catch (error) {
+      await logActivity(user.id, "send_message", {
+        level: "error", message: `Follow-up failed for ${contact.name}: ${(error as Error).message}`, success: false, contactId,
+      });
       results.push({ contactId, success: false, error: (error as Error).message });
     }
   }

@@ -22,15 +22,11 @@ import { useEffect, useState } from "react";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/chat", label: "Agent Chat", icon: MessageSquare },
-  { href: "/command", label: "Command Center", icon: Activity },
-  { href: "/discover", label: "Discover", icon: Search },
-  { href: "/invites", label: "Invites", icon: Send },
-  { href: "/followups", label: "Follow-ups", icon: UserCheck },
-  { href: "/responses", label: "Inbox", icon: Inbox },
+  { href: "/chat", label: "Agent", icon: MessageSquare },
+  { href: "/command", label: "Execute", icon: Activity },
   { href: "/contacts", label: "Contacts", icon: Users },
-  { href: "/performance", label: "Performance", icon: TrendingUp },
-  { href: "/sync", label: "Sync", icon: RefreshCw },
+  { href: "/invites", label: "Invites", icon: Send },
+  { href: "/performance", label: "Analytics", icon: TrendingUp },
 ];
 
 const bottomItems = [
