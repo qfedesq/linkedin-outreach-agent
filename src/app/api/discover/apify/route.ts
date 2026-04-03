@@ -6,14 +6,18 @@ import { decrypt } from "@/lib/encryption";
 export async function POST(request: Request) {
   const user = await getAuthUser();
   if (!user?.settings?.apifyApiToken) return unauthorized();
+  if (!user.settings.linkedinLiAt) {
+    return NextResponse.json({ error: "LinkedIn cookie required for Apify scraping" }, { status: 400 });
+  }
 
   const body = await request.json();
   const { keywords, geography, maxResults = 50 } = body;
 
   const token = decrypt(user.settings.apifyApiToken);
+  const liAt = decrypt(user.settings.linkedinLiAt);
 
   try {
-    // Start Apify actor run
+    // Start Apify actor run with required cookie and proxy config
     const runResponse = await fetch(
       "https://api.apify.com/v2/acts/curious_coder~linkedin-profile-scraper/runs?waitForFinish=120",
       {
@@ -23,9 +27,15 @@ export async function POST(request: Request) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          cookie: [{ name: "li_at", value: liAt, domain: ".linkedin.com" }],
+          proxy: {
+            useApifyProxy: true,
+            apifyProxyGroups: ["RESIDENTIAL"],
+          },
           searchKeywords: keywords,
           maxResults,
           location: geography || "",
+          deepScrape: false,
         }),
       }
     );

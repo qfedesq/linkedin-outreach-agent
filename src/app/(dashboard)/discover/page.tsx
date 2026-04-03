@@ -196,14 +196,54 @@ export default function DiscoverPage() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="search">
+        <TabsContent value="search" className="space-y-4">
           <Card>
             <CardHeader>
               <CardTitle>LinkedIn Voyager Search</CardTitle>
               <CardDescription>Search directly via LinkedIn API (requires active cookie)</CardDescription>
             </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">Coming soon — use Apify scrape for bulk discovery</p>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label>Keywords</Label>
+                <Input
+                  value={keywords}
+                  onChange={(e) => setKeywords(e.target.value)}
+                  placeholder='e.g., fintech lending CEO'
+                />
+              </div>
+              <Button onClick={async () => {
+                if (!keywords) { toast.error("Enter keywords"); return; }
+                setLoading(true);
+                try {
+                  const res = await fetch("/api/discover/linkedin-search", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ keywords, count: 10 }),
+                  });
+                  const data = await res.json();
+                  if (data.error) { toast.error(data.error); return; }
+                  const results = data.results || [];
+                  if (results.length === 0) { toast.info("No results found"); return; }
+                  // Save results as contacts
+                  const contacts = results.map((r: { firstName: string; lastName: string; headline: string; publicIdentifier: string }) => ({
+                    name: `${r.firstName} ${r.lastName}`.trim(),
+                    position: r.headline || null,
+                    linkedinUrl: `https://www.linkedin.com/in/${r.publicIdentifier}`,
+                    source: "linkedin_search",
+                  }));
+                  const saveRes = await fetch("/api/contacts", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(contacts),
+                  });
+                  const saveData = await saveRes.json();
+                  toast.success(`Found ${results.length} — saved ${saveData.created} new (${saveData.skipped} duplicates)`);
+                } catch { toast.error("Search failed"); }
+                finally { setLoading(false); }
+              }} disabled={loading}>
+                {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Search className="mr-2 h-4 w-4" />}
+                Search LinkedIn
+              </Button>
             </CardContent>
           </Card>
         </TabsContent>
