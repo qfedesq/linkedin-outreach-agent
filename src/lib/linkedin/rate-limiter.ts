@@ -15,8 +15,8 @@ const BUCKET_CONFIGS: Record<string, BucketConfig> = {
   profile: { maxTokens: 5, refillRate: 0.33, minDelay: 2400, maxDelay: 3600 },
   invitation: { maxTokens: 2, refillRate: 0.022, minDelay: 30000, maxDelay: 60000 },
   message: { maxTokens: 3, refillRate: 0.033, minDelay: 24000, maxDelay: 36000 },
-  search: { maxTokens: 3, refillRate: 0.2, minDelay: 4000, maxDelay: 6000 },
-  global: { maxTokens: 100, refillRate: 0.028, minDelay: 500, maxDelay: 1500 },
+  search: { maxTokens: 3, refillRate: 0.2, minDelay: 1000, maxDelay: 2000 },
+  global: { maxTokens: 100, refillRate: 0.028, minDelay: 200, maxDelay: 500 },
 };
 
 class RateLimiter {

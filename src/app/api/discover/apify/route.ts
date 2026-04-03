@@ -3,6 +3,8 @@ import { getAuthUser, unauthorized } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
 import { decrypt } from "@/lib/encryption";
 
+export const maxDuration = 180; // Apify actor can take up to 3 min
+
 export async function POST(request: Request) {
   const user = await getAuthUser();
   if (!user?.settings?.apifyApiToken) return unauthorized();
