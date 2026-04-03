@@ -15,6 +15,7 @@ import {
   ScrollText,
   Settings,
 } from "lucide-react";
+import { APP_VERSION } from "@/lib/constants";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -65,6 +66,9 @@ export function Sidebar() {
           );
         })}
       </nav>
+      <div className="px-4 py-3 border-t border-border">
+        <span className="text-xs text-muted-foreground">V{APP_VERSION}</span>
+      </div>
     </aside>
   );
 }
