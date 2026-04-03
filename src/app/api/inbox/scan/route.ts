@@ -15,7 +15,17 @@ export async function POST() {
   const api = createLinkedInAPI(liAt, csrf);
 
   try {
-    const conversations = await api.messaging.getConversations(0, 50);
+    let conversations;
+    try {
+      conversations = await api.messaging.getConversations(0, 50);
+    } catch (msgError) {
+      // Messaging API may return 400 — return graceful empty result
+      return NextResponse.json({
+        scanned: 0,
+        matches: [],
+        warning: `Messaging API unavailable: ${(msgError as Error).message}`,
+      });
+    }
 
     // Get all tracked contacts
     const contacts = await prisma.contact.findMany({

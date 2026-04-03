@@ -31,7 +31,11 @@ export async function POST(request: Request) {
     );
 
     if (!runResponse.ok) {
-      return NextResponse.json({ error: `Apify error: ${runResponse.status}` }, { status: 500 });
+      const errBody = await runResponse.text().catch(() => "");
+      return NextResponse.json(
+        { error: `Apify error ${runResponse.status}: ${errBody.substring(0, 300)}` },
+        { status: 500 }
+      );
     }
 
     const runData = await runResponse.json();

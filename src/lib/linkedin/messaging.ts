@@ -91,7 +91,7 @@ export class MessagingAPI {
 
   async getConversations(start = 0, count = 20): Promise<Conversation[]> {
     const data = await this.client.getJson(
-      `/messaging/conversations?keyVersion=LEGACY_INBOX&start=${start}&count=${count}`,
+      `/messaging/conversations?start=${start}&count=${count}`,
       "global"
     );
 
