@@ -21,6 +21,13 @@ interface Settings {
   googleServiceAccount: string;
   calendarBookingUrl: string;
   preferredModel: string;
+  campaignName: string;
+  campaignDescription: string;
+  icpDefinition: string;
+  strategyNotes: string;
+  dailyInviteLimit: number;
+  followupDelayDays: number;
+  autopilotEnabled: boolean;
 }
 
 export default function SettingsPage() {
@@ -35,6 +42,13 @@ export default function SettingsPage() {
     googleServiceAccount: "",
     calendarBookingUrl: "https://calendar.app.google/k8XEhkPnX6sc2GdW9",
     preferredModel: "anthropic/claude-sonnet-4",
+    campaignName: "Sky Protocol $100M Facility",
+    campaignDescription: "",
+    icpDefinition: "",
+    strategyNotes: "",
+    dailyInviteLimit: 20,
+    followupDelayDays: 3,
+    autopilotEnabled: false,
   });
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
   const [testing, setTesting] = useState<Record<string, boolean>>({});
@@ -324,6 +338,89 @@ export default function SettingsPage() {
               value={settings.calendarBookingUrl}
               onChange={(e) => setSettings((prev) => ({ ...prev, calendarBookingUrl: e.target.value }))}
             />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Campaign Configuration */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Campaign Configuration</CardTitle>
+          <CardDescription>Define your outreach campaign parameters. The agent uses these to personalize messages.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Campaign Name</Label>
+              <Input
+                value={settings.campaignName}
+                onChange={(e) => setSettings((prev) => ({ ...prev, campaignName: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Calendar Booking URL</Label>
+              <Input
+                value={settings.calendarBookingUrl}
+                onChange={(e) => setSettings((prev) => ({ ...prev, calendarBookingUrl: e.target.value }))}
+              />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label>Campaign Description</Label>
+            <Textarea
+              value={settings.campaignDescription || ""}
+              onChange={(e) => setSettings((prev) => ({ ...prev, campaignDescription: e.target.value }))}
+              placeholder="Brief description of the campaign, product, and value proposition..."
+              rows={3}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>ICP Definition</Label>
+            <Textarea
+              value={settings.icpDefinition || ""}
+              onChange={(e) => setSettings((prev) => ({ ...prev, icpDefinition: e.target.value }))}
+              placeholder="Define the ideal customer profile: industries, roles, company sizes, signals..."
+              rows={4}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Outreach Strategy Notes</Label>
+            <Textarea
+              value={settings.strategyNotes || ""}
+              onChange={(e) => setSettings((prev) => ({ ...prev, strategyNotes: e.target.value }))}
+              placeholder="Instructions for the agent: tone, messaging style, what to emphasize..."
+              rows={4}
+            />
+          </div>
+          <div className="grid grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <Label>Daily Invite Limit</Label>
+              <Input
+                type="number"
+                value={settings.dailyInviteLimit}
+                onChange={(e) => setSettings((prev) => ({ ...prev, dailyInviteLimit: parseInt(e.target.value) || 20 }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Follow-up Delay (days)</Label>
+              <Input
+                type="number"
+                value={settings.followupDelayDays}
+                onChange={(e) => setSettings((prev) => ({ ...prev, followupDelayDays: parseInt(e.target.value) || 3 }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Auto-pilot Mode</Label>
+              <div className="flex items-center gap-2 pt-2">
+                <input
+                  type="checkbox"
+                  checked={settings.autopilotEnabled}
+                  onChange={(e) => setSettings((prev) => ({ ...prev, autopilotEnabled: e.target.checked }))}
+                  className="rounded"
+                />
+                <span className="text-sm text-muted-foreground">Run daily cycle automatically</span>
+              </div>
+            </div>
           </div>
         </CardContent>
       </Card>

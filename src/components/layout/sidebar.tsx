@@ -14,12 +14,14 @@ import {
   RefreshCw,
   ScrollText,
   Settings,
+  MessageSquare,
 } from "lucide-react";
 import { APP_VERSION } from "@/lib/constants";
 import { useEffect, useState } from "react";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/chat", label: "Agent Chat", icon: MessageSquare },
   { href: "/command", label: "Command Center", icon: Activity },
   { href: "/discover", label: "Discover", icon: Search },
   { href: "/invites", label: "Invites", icon: Send },

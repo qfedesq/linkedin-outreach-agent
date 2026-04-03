@@ -27,6 +27,13 @@ export async function GET(request: NextRequest) {
       googleServiceAccount: settings.googleServiceAccount ? decrypt(settings.googleServiceAccount) : null,
       calendarBookingUrl: settings.calendarBookingUrl,
       preferredModel: settings.preferredModel,
+      campaignName: settings.campaignName,
+      campaignDescription: settings.campaignDescription,
+      icpDefinition: settings.icpDefinition,
+      strategyNotes: settings.strategyNotes,
+      dailyInviteLimit: settings.dailyInviteLimit,
+      followupDelayDays: settings.followupDelayDays,
+      autopilotEnabled: settings.autopilotEnabled,
     });
   }
 
@@ -41,6 +48,13 @@ export async function GET(request: NextRequest) {
     googleServiceAccount: settings.googleServiceAccount ? "••••••••" : null,
     calendarBookingUrl: settings.calendarBookingUrl,
     preferredModel: settings.preferredModel,
+    campaignName: settings.campaignName,
+    campaignDescription: settings.campaignDescription,
+    icpDefinition: settings.icpDefinition,
+    strategyNotes: settings.strategyNotes,
+    dailyInviteLimit: settings.dailyInviteLimit,
+    followupDelayDays: settings.followupDelayDays,
+    autopilotEnabled: settings.autopilotEnabled,
   });
 }
 
@@ -79,6 +93,14 @@ export async function PUT(request: Request) {
   if (body.preferredModel !== undefined) {
     data.preferredModel = body.preferredModel;
   }
+  // Campaign fields
+  if (body.campaignName !== undefined) data.campaignName = body.campaignName;
+  if (body.campaignDescription !== undefined) data.campaignDescription = body.campaignDescription || null;
+  if (body.icpDefinition !== undefined) data.icpDefinition = body.icpDefinition || null;
+  if (body.strategyNotes !== undefined) data.strategyNotes = body.strategyNotes || null;
+  if (body.dailyInviteLimit !== undefined) data.dailyInviteLimit = parseInt(body.dailyInviteLimit) || 20;
+  if (body.followupDelayDays !== undefined) data.followupDelayDays = parseInt(body.followupDelayDays) || 3;
+  if (body.autopilotEnabled !== undefined) data.autopilotEnabled = Boolean(body.autopilotEnabled);
 
   await prisma.userSettings.upsert({
     where: { userId: user.id },

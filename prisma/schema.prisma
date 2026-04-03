@@ -31,6 +31,17 @@ model UserSettings {
   googleServiceAccount  String?
   calendarBookingUrl    String    @default("https://calendar.app.google/k8XEhkPnX6sc2GdW9")
   preferredModel        String    @default("anthropic/claude-sonnet-4")
+  // Campaign configuration
+  campaignName          String    @default("Sky Protocol $100M Facility")
+  campaignDescription   String?
+  icpDefinition         String?   // Target ICP definition (editable by user)
+  strategyNotes         String?   // Outreach strategy (agent reads + updates)
+  dailyInviteLimit      Int       @default(20)
+  followupDelayDays     Int       @default(3)
+  autopilotEnabled      Boolean   @default(false)
+  // Unipile integration
+  unipileApiKey         String?
+  unipileAccountId      String?
 }
 
 model Contact {
