@@ -59,6 +59,16 @@ export async function POST(request: Request) {
 
     const profiles = await dataResponse.json();
 
+    // If no results, return debug info
+    if (!Array.isArray(profiles) || profiles.length === 0) {
+      return NextResponse.json({
+        total: 0,
+        created: 0,
+        skipped: 0,
+        debug: `Dataset returned ${Array.isArray(profiles) ? '0 items' : typeof profiles}. Actor may need different input format.`,
+      });
+    }
+
     let created = 0;
     let skipped = 0;
 

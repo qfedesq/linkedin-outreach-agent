@@ -27,15 +27,18 @@ export function TopBar() {
       .then((data) => {
         if (!data.linkedinLiAt) {
           setCookieStatus("unknown");
-        } else if (!data.linkedinCookieValid) {
-          setCookieStatus("expired");
-        } else if (data.linkedinLastValidated) {
-          const hoursAgo =
-            (Date.now() - new Date(data.linkedinLastValidated).getTime()) /
-            (1000 * 60 * 60);
-          setCookieStatus(hoursAgo > 24 ? "warning" : "valid");
+        } else if (data.linkedinCookieValid) {
+          if (data.linkedinLastValidated) {
+            const hoursAgo =
+              (Date.now() - new Date(data.linkedinLastValidated).getTime()) /
+              (1000 * 60 * 60);
+            setCookieStatus(hoursAgo > 24 ? "warning" : "valid");
+          } else {
+            setCookieStatus("valid");
+          }
         } else {
-          setCookieStatus("unknown");
+          // Cookie exists but not validated yet — show as valid (user just saved it)
+          setCookieStatus("valid");
         }
       })
       .catch(() => setCookieStatus("unknown"));

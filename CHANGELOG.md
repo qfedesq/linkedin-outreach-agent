@@ -7,6 +7,18 @@ Version increments by +0.1 on every merge to `main`.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-04-03
+
+### Fixed
+- **Topbar**: Cookie status now shows "Connected" when li_at exists (was showing "Expired" incorrectly)
+- **LinkedIn Search**: Simplified Voyager search URL encoding, added proper error handling for non-JSON responses
+- **Apify**: Added debug info when actor returns 0 results
+- **Rate limiter**: Reduced search delays to prevent Vercel function timeouts
+
+### Changed
+- **Settings**: Eye toggle now fetches decrypted values from server to verify stored credentials
+- **Version**: Display V0.3 in sidebar
+
 ## [0.2.0] - 2026-04-03
 
 ### Changed
