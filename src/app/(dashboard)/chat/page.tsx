@@ -2,13 +2,11 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
-import { Send, Loader2, Bot, User, Sparkles, Users, UserCheck, Inbox, Calendar, Wrench, CheckCircle } from "lucide-react";
+import { Send, Loader2, Bot, User, Sparkles, Users, UserCheck, Inbox, Calendar, Wrench } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-interface Message { role: "user" | "assistant"; content: string; steps?: Step[] }
-interface Step { type: "call" | "result"; tool: string; args?: string; message?: string }
+interface Message { role: "user" | "assistant"; content: string; thinking?: string[] }
 interface Stats { total: number; invited: number; connected: number; replied: number; meetings: number }
 
 const SUGGESTIONS = [
@@ -20,26 +18,11 @@ const SUGGESTIONS = [
   "Run the daily cycle",
 ];
 
-const TOOL_LABELS: Record<string, string> = {
-  get_pipeline_stats: "Checking pipeline",
-  search_contacts: "Searching contacts",
-  discover_prospects: "Running Apify scrape",
-  score_contacts: "Scoring with LLM",
-  prepare_invites: "Generating invites",
-  send_invites: "Sending via LinkedIn",
-  check_connections_and_inbox: "Checking connections & inbox",
-  send_followups: "Sending follow-ups",
-  run_full_cycle: "Running daily cycle",
-  get_performance: "Analyzing performance",
-  get_recent_activity: "Loading activity",
-  learn: "Saving to knowledge",
-  get_knowledge: "Loading knowledge",
-};
-
 export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [streamingContent, setStreamingContent] = useState("");
   const [thinkingSteps, setThinkingSteps] = useState<string[]>([]);
   const [history, setHistory] = useState<Array<{ role: string; content: string }>>([]);
   const [stats, setStats] = useState<Stats>({ total: 0, invited: 0, connected: 0, replied: 0, meetings: 0 });
@@ -47,10 +30,11 @@ export default function ChatPage() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  const scrollToBottom = () => {
-    setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
-  };
-  useEffect(scrollToBottom, [messages, thinkingSteps, loading]);
+  const scrollToBottom = useCallback(() => {
+    setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
+  }, []);
+
+  useEffect(scrollToBottom, [messages, streamingContent, thinkingSteps, scrollToBottom]);
 
   const fetchStats = useCallback(async () => {
     try {
@@ -82,38 +66,80 @@ export default function ChatPage() {
     setInput("");
     setMessages(prev => [...prev, { role: "user", content: msg }]);
     setLoading(true);
-    setThinkingSteps(["Analyzing request..."]);
-
-    // Poll for live status updates while agent works
-    const statusPoll = setInterval(async () => {
-      try {
-        const sr = await fetch("/api/chat/status");
-        const sd = await sr.json();
-        if (sd.steps?.length > 0) setThinkingSteps(sd.steps);
-      } catch {}
-    }, 2000);
+    setStreamingContent("");
+    setThinkingSteps([]);
 
     try {
       const res = await fetch("/api/chat", {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: msg, history }),
       });
-      const data = await res.json();
 
-      if (data.error) {
-        toast.error(data.error);
-        setMessages(prev => [...prev, { role: "assistant", content: `Error: ${data.error}` }]);
-      } else {
-        const steps: Step[] = data.steps || [];
-        setMessages(prev => [...prev, { role: "assistant", content: data.response, steps }]);
-        setHistory(prev => [...prev, { role: "user", content: msg }, { role: "assistant", content: data.response }].slice(-30));
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Failed" }));
+        toast.error(err.error || "Failed");
+        setMessages(prev => [...prev, { role: "assistant", content: `Error: ${err.error}` }]);
+        setLoading(false);
+        return;
+      }
+
+      // Read SSE stream
+      const reader = res.body?.getReader();
+      if (!reader) { setLoading(false); return; }
+
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let fullContent = "";
+      const steps: string[] = [];
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const { type, data } = JSON.parse(line.substring(6));
+
+            switch (type) {
+              case "thinking":
+                steps.push(data);
+                setThinkingSteps([...steps]);
+                break;
+              case "content":
+                fullContent += data;
+                setStreamingContent(fullContent);
+                break;
+              case "clear":
+                fullContent = "";
+                setStreamingContent("");
+                break;
+              case "error":
+                toast.error(data);
+                break;
+              case "done":
+                break;
+            }
+          } catch { /* skip */ }
+        }
+      }
+
+      // Finalize message
+      if (fullContent) {
+        setMessages(prev => [...prev, { role: "assistant", content: fullContent, thinking: steps.length > 0 ? steps : undefined }]);
+        setHistory(prev => [...prev, { role: "user", content: msg }, { role: "assistant", content: fullContent }].slice(-30));
         fetchStats();
       }
-    } catch { toast.error("Failed"); }
-    clearInterval(statusPoll);
+    } catch { toast.error("Connection failed"); }
+
     setLoading(false);
+    setStreamingContent("");
     setThinkingSteps([]);
-    // Focus cursor back to input
     setTimeout(() => inputRef.current?.focus(), 100);
   };
 
@@ -151,7 +177,7 @@ export default function ChatPage() {
                 <Sparkles className="h-7 w-7 text-primary" />
               </div>
               <h2 className="text-lg font-bold mb-1">Outreach Agent</h2>
-              <p className="text-xs text-muted-foreground mb-6 max-w-sm">Tell me what to do. I can discover prospects, score them, generate invites, and run the full outreach cycle.</p>
+              <p className="text-xs text-muted-foreground mb-6 max-w-sm">Tell me what to do. I execute in real-time.</p>
               <div className="grid grid-cols-2 gap-2 w-full max-w-md">
                 {SUGGESTIONS.map(s => (
                   <button key={s} onClick={() => sendMessage(s)} className="text-left text-[11px] p-2.5 rounded-lg border border-border hover:bg-accent transition-colors text-muted-foreground hover:text-foreground">{s}</button>
@@ -174,21 +200,15 @@ export default function ChatPage() {
                   ) : <span>{msg.content}</span>}
                 </div>
                 {msg.role === "user" && (
-                  <div className="w-6 h-6 rounded-md bg-muted flex items-center justify-center shrink-0 mt-0.5">
-                    <User className="h-3.5 w-3.5 text-muted-foreground" />
-                  </div>
+                  <div className="w-6 h-6 rounded-md bg-muted flex items-center justify-center shrink-0 mt-0.5"><User className="h-3.5 w-3.5 text-muted-foreground" /></div>
                 )}
               </div>
-              {/* Tool steps (thinking trail) */}
-              {msg.steps && msg.steps.length > 0 && (
+              {/* Thinking steps trail */}
+              {msg.thinking && msg.thinking.length > 0 && (
                 <div className="ml-8 mt-1 space-y-0.5">
-                  {msg.steps.map((step, j) => (
-                    <div key={j} className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-mono">
-                      {step.type === "call" ? (
-                        <><Wrench className="h-2.5 w-2.5 text-primary/60" /><span className="text-primary/80">{TOOL_LABELS[step.tool] || step.tool}</span></>
-                      ) : (
-                        <><CheckCircle className="h-2.5 w-2.5 text-success/60" /><span className="truncate max-w-md">{step.message}</span></>
-                      )}
+                  {msg.thinking.map((s, j) => (
+                    <div key={j} className="flex items-center gap-1.5 text-[10px] text-muted-foreground/60 font-mono">
+                      <Wrench className="h-2.5 w-2.5" /><span className="truncate">{s}</span>
                     </div>
                   ))}
                 </div>
@@ -196,24 +216,39 @@ export default function ChatPage() {
             </div>
           ))}
 
-          {/* Thinking indicator */}
+          {/* Live streaming content */}
           {loading && (
-            <div className="flex gap-2.5">
-              <div className="w-6 h-6 rounded-md bg-primary/10 flex items-center justify-center shrink-0">
-                <Bot className="h-3.5 w-3.5 text-primary animate-pulse" />
-              </div>
-              <div className="bg-card border border-border rounded-lg px-3 py-2 space-y-1">
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Loader2 className="h-3 w-3 animate-spin" />Working...
+            <div>
+              {/* Thinking steps (live) */}
+              {thinkingSteps.length > 0 && (
+                <div className="ml-8 mb-2 space-y-0.5">
+                  {thinkingSteps.map((s, i) => (
+                    <div key={i} className="flex items-center gap-1.5 text-[10px] text-primary/60 font-mono animate-in fade-in">
+                      <Wrench className="h-2.5 w-2.5" /><span>{s}</span>
+                    </div>
+                  ))}
                 </div>
-                {thinkingSteps.map((s, i) => (
-                  <div key={i} className="text-[10px] font-mono text-primary/60 flex items-center gap-1">
-                    <Wrench className="h-2.5 w-2.5" />{s}
-                  </div>
-                ))}
+              )}
+
+              {/* Streaming response */}
+              <div className="flex gap-2.5">
+                <div className="w-6 h-6 rounded-md bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+                  <Bot className="h-3.5 w-3.5 text-primary animate-pulse" />
+                </div>
+                <div className="max-w-[85%] rounded-lg px-3 py-2 text-[13px] leading-relaxed bg-card border border-border">
+                  {streamingContent ? (
+                    <div className="prose prose-sm prose-invert max-w-none [&_p]:my-1 [&_strong]:text-foreground" dangerouslySetInnerHTML={{ __html: fmtMd(streamingContent) }} />
+                  ) : (
+                    <span className="text-muted-foreground flex items-center gap-2">
+                      <Loader2 className="h-3 w-3 animate-spin" />Working...
+                    </span>
+                  )}
+                  <span className="inline-block w-0.5 h-4 bg-primary animate-pulse ml-0.5" />
+                </div>
               </div>
             </div>
           )}
+
           <div ref={bottomRef} />
         </div>
       </div>
