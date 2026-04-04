@@ -86,16 +86,21 @@ export function Sidebar() {
             <p className="px-3 text-[10px] text-muted-foreground/50 italic">No campaigns yet</p>
           )}
           {campaigns.map(c => {
-            const isActive = pathname === `/chat/${c.id}`;
+            const isActive = pathname === `/chat/${c.id}` || pathname === `/campaigns/${c.id}`;
             return (
-              <Link key={c.id} href={`/chat/${c.id}`} className={cn(
-                "flex items-center gap-2 px-3 py-1.5 text-[11px] rounded transition-colors",
+              <div key={c.id} className={cn(
+                "flex items-center gap-1 px-3 py-1.5 text-[11px] rounded transition-colors group",
                 isActive ? "bg-accent text-primary font-semibold" : "text-muted-foreground hover:text-foreground hover:bg-accent"
               )}>
-                <Megaphone className="w-3 h-3 shrink-0" />
-                <span className="truncate">{c.name}</span>
-                {c.isActive && <span className="w-1.5 h-1.5 rounded-full bg-success shrink-0 ml-auto" />}
-              </Link>
+                <Link href={`/chat/${c.id}`} className="flex items-center gap-2 flex-1 min-w-0">
+                  <Megaphone className="w-3 h-3 shrink-0" />
+                  <span className="truncate">{c.name}</span>
+                </Link>
+                <Link href={`/campaigns/${c.id}`} className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0 hover:text-primary" title="Campaign settings">
+                  <Settings className="w-3 h-3" />
+                </Link>
+                {c.isActive && <span className="w-1.5 h-1.5 rounded-full bg-success shrink-0" />}
+              </div>
             );
           })}
         </div>
