@@ -31,6 +31,11 @@ export function getToolDefinitions() {
     { type: "function" as const, function: { name: "get_recent_activity", description: "Get recent execution logs", parameters: { type: "object", properties: { limit: { type: "number" } } } } },
     { type: "function" as const, function: { name: "learn", description: "Save a learning/insight to the knowledge base (persists across sessions)", parameters: { type: "object", properties: { category: { type: "string", enum: ["message_style","icp_insight","strategy","correction"] }, content: { type: "string", description: "The learning to remember" } }, required: ["category","content"] } } },
     { type: "function" as const, function: { name: "get_knowledge", description: "Read all accumulated knowledge/learnings from past sessions", parameters: { type: "object", properties: {} } } },
+    // ===== CAMPAIGN MANAGEMENT =====
+    { type: "function" as const, function: { name: "create_campaign", description: "Create a new outreach campaign with name, description, ICP, and strategy", parameters: { type: "object", properties: { name: { type: "string", description: "Campaign name" }, description: { type: "string", description: "Campaign description" }, icpDefinition: { type: "string", description: "ICP scoring criteria" }, strategyNotes: { type: "string", description: "Outreach strategy and messaging notes" }, calendarUrl: { type: "string", description: "Calendar booking URL" } }, required: ["name"] } } },
+    { type: "function" as const, function: { name: "list_campaigns", description: "List all campaigns with their status and contact counts", parameters: { type: "object", properties: {} } } },
+    { type: "function" as const, function: { name: "update_campaign", description: "Update a campaign's settings (name, description, ICP, strategy, calendar, limits)", parameters: { type: "object", properties: { campaign_id: { type: "string" }, name: { type: "string" }, description: { type: "string" }, icpDefinition: { type: "string" }, strategyNotes: { type: "string" }, calendarUrl: { type: "string" }, dailyInviteLimit: { type: "number" }, followupDelayDays: { type: "number" }, isActive: { type: "boolean" } }, required: ["campaign_id"] } } },
+    { type: "function" as const, function: { name: "delete_campaign", description: "Delete a campaign (contacts are preserved)", parameters: { type: "object", properties: { campaign_id: { type: "string" } }, required: ["campaign_id"] } } },
   ];
 }
 
@@ -321,6 +326,59 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
       const r1 = await executeTool("check_connections_and_inbox", {}, userId);
       const r2 = await executeTool("send_followups", {}, userId);
       return { success: true, message: `Daily cycle complete:\n• ${r1.message}\n• ${r2.message}` };
+    }
+
+    // ===== CAMPAIGN MANAGEMENT =====
+    case "create_campaign": {
+      const campaign = await prisma.campaign.create({
+        data: {
+          userId,
+          name: (args.name as string) || "New Campaign",
+          description: (args.description as string) || null,
+          icpDefinition: (args.icpDefinition as string) || null,
+          strategyNotes: (args.strategyNotes as string) || null,
+          calendarUrl: (args.calendarUrl as string) || null,
+        },
+      });
+      await logActivity(userId, "create_campaign", { level: "success", message: `Created campaign: ${campaign.name}` });
+      return { success: true, data: { id: campaign.id, name: campaign.name }, message: `Campaign "${campaign.name}" created (ID: ${campaign.id}). You can configure it further in the sidebar.` };
+    }
+
+    case "list_campaigns": {
+      const campaigns = await prisma.campaign.findMany({ where: { userId }, orderBy: { createdAt: "desc" } });
+      if (campaigns.length === 0) return { success: true, message: "No campaigns yet. Create one with create_campaign." };
+      const list = await Promise.all(campaigns.map(async c => {
+        const contacts = await prisma.contact.count({ where: { userId, campaignId: c.id } });
+        return `• **${c.name}** (${c.isActive ? "active" : "paused"}) — ${contacts} contacts${c.description ? ` — ${c.description.substring(0, 50)}` : ""}`;
+      }));
+      return { success: true, data: campaigns.map(c => ({ id: c.id, name: c.name, isActive: c.isActive })), message: `${campaigns.length} campaigns:\n${list.join("\n")}` };
+    }
+
+    case "update_campaign": {
+      const cid = args.campaign_id as string;
+      if (!cid) return { success: false, message: "campaign_id required" };
+      const updates: Record<string, unknown> = {};
+      if (args.name !== undefined) updates.name = args.name;
+      if (args.description !== undefined) updates.description = args.description;
+      if (args.icpDefinition !== undefined) updates.icpDefinition = args.icpDefinition;
+      if (args.strategyNotes !== undefined) updates.strategyNotes = args.strategyNotes;
+      if (args.calendarUrl !== undefined) updates.calendarUrl = args.calendarUrl;
+      if (args.dailyInviteLimit !== undefined) updates.dailyInviteLimit = args.dailyInviteLimit;
+      if (args.followupDelayDays !== undefined) updates.followupDelayDays = args.followupDelayDays;
+      if (args.isActive !== undefined) updates.isActive = args.isActive;
+      await prisma.campaign.updateMany({ where: { id: cid, userId }, data: updates });
+      await logActivity(userId, "update_campaign", { level: "success", message: `Updated campaign ${cid}: ${Object.keys(updates).join(", ")}` });
+      return { success: true, message: `Campaign updated: ${Object.keys(updates).join(", ")}` };
+    }
+
+    case "delete_campaign": {
+      const did = args.campaign_id as string;
+      if (!did) return { success: false, message: "campaign_id required" };
+      const camp = await prisma.campaign.findFirst({ where: { id: did, userId } });
+      if (!camp) return { success: false, message: "Campaign not found" };
+      await prisma.campaign.deleteMany({ where: { id: did, userId } });
+      await logActivity(userId, "delete_campaign", { level: "info", message: `Deleted campaign: ${camp.name}` });
+      return { success: true, message: `Campaign "${camp.name}" deleted. Contacts preserved.` };
     }
 
     default:
