@@ -15,10 +15,10 @@ export async function POST(request: Request) {
   if (!user?.settings?.openrouterApiKey) return unauthorized();
 
   const body = await request.json();
-  const { message, history = [] } = body;
+  const { message, history = [], campaignId = null } = body;
   if (!message) return NextResponse.json({ error: "Message required" }, { status: 400 });
 
-  await prisma.chatMessage.create({ data: { userId: user.id, role: "user", content: message } });
+  await prisma.chatMessage.create({ data: { userId: user.id, role: "user", content: message, campaignId } });
   await logActivity(user.id, "agent_chat", { level: "info", message: `User: ${message.substring(0, 80)}` });
 
   const encoder = new TextEncoder();
@@ -33,13 +33,24 @@ export async function POST(request: Request) {
         const model = user.settings!.preferredModel;
         const tools = getToolDefinitions();
 
-        // Load knowledge + settings
+        // Load knowledge (global — shared across campaigns)
         const knowledge = await prisma.agentKnowledge.findMany({ where: { userId: user.id }, take: 30, orderBy: { createdAt: "desc" } });
         const knowledgeText = knowledge.map(k => `- [${k.category}] ${k.content}`).join("\n");
         const autonomy = user.settings!.autonomyLevel || "training";
-        const strategy = user.settings!.strategyNotes || "";
 
-        const systemPrompt = buildSystemPrompt(knowledgeText, autonomy, strategy);
+        // Load campaign-specific config if in a campaign context
+        let strategy = user.settings!.strategyNotes || "";
+        let campaignContext = "";
+        if (campaignId) {
+          const campaign = await prisma.campaign.findFirst({ where: { id: campaignId, userId: user.id } });
+          if (campaign) {
+            campaignContext = `\nACTIVE CAMPAIGN: "${campaign.name}"${campaign.description ? `\nDescription: ${campaign.description}` : ""}${campaign.icpDefinition ? `\nICP: ${campaign.icpDefinition}` : ""}`;
+            if (campaign.strategyNotes) strategy = campaign.strategyNotes;
+            if (campaign.calendarUrl) campaignContext += `\nCalendar: ${campaign.calendarUrl}`;
+          }
+        }
+
+        const systemPrompt = buildSystemPrompt(knowledgeText, autonomy, strategy, campaignContext);
 
         const messages: Array<Record<string, unknown>> = [
           { role: "system", content: systemPrompt },
@@ -145,7 +156,7 @@ export async function POST(request: Request) {
 
         // Save to DB
         if (finalResponse) {
-          await prisma.chatMessage.create({ data: { userId: user.id, role: "assistant", content: finalResponse } });
+          await prisma.chatMessage.create({ data: { userId: user.id, role: "assistant", content: finalResponse, campaignId } });
           await logActivity(user.id, "agent_chat", { level: "success", message: `Agent: ${finalResponse.substring(0, 80)}...` });
         }
 
@@ -169,8 +180,11 @@ export async function GET(request: NextRequest) {
   const user = await getAuthUser();
   if (!user?.settings?.openrouterApiKey) return unauthorized();
 
+  const campaignId = request.nextUrl.searchParams.get("campaignId");
+
   const chatHistory = await prisma.chatMessage.findMany({
-    where: { userId: user.id }, orderBy: { createdAt: "desc" }, take: 50,
+    where: { userId: user.id, ...(campaignId ? { campaignId } : {}) },
+    orderBy: { createdAt: "desc" }, take: 50,
   });
 
   const lastMsg = chatHistory[0];
@@ -186,12 +200,11 @@ export async function GET(request: NextRequest) {
   });
 }
 
-function buildSystemPrompt(knowledge: string, autonomyLevel: string, strategyNotes: string) {
-  return `You are the LinkedIn Outreach Agent for the Sky Protocol campaign by Protofire/arenas.fi.
-
-CAMPAIGN: arenas.fi is assembling 5-10 specialty lenders to access a $100M stablecoin liquidity line from Sky Protocol ($7B+ DeFi reserve).
+function buildSystemPrompt(knowledge: string, autonomyLevel: string, strategyNotes: string, campaignContext?: string) {
+  return `You are the LinkedIn Outreach Agent by Protofire.
 
 YOUR GOAL: Maximize meetings booked. Discover, score, invite, follow up, detect replies.
+${campaignContext || "No specific campaign selected. Ask the user which campaign to work on."}
 
 AUTONOMY: ${autonomyLevel.toUpperCase()}
 ${autonomyLevel === "training" ? "Ask approval before sending invites/follow-ups." : ""}

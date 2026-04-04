@@ -86,9 +86,9 @@ export function Sidebar() {
             <p className="px-3 text-[10px] text-muted-foreground/50 italic">No campaigns yet</p>
           )}
           {campaigns.map(c => {
-            const isActive = pathname === `/campaigns/${c.id}`;
+            const isActive = pathname === `/chat/${c.id}`;
             return (
-              <Link key={c.id} href={`/campaigns/${c.id}`} className={cn(
+              <Link key={c.id} href={`/chat/${c.id}`} className={cn(
                 "flex items-center gap-2 px-3 py-1.5 text-[11px] rounded transition-colors",
                 isActive ? "bg-accent text-primary font-semibold" : "text-muted-foreground hover:text-foreground hover:bg-accent"
               )}>
