@@ -1,8 +1,9 @@
 import { prisma } from "@/lib/prisma";
 import { decrypt } from "@/lib/encryption";
-import { callLLM, ICP_SCORING_PROMPT, getConnectionNotePrompt, getFollowupPrompt } from "@/lib/llm";
+import { callLLM, getIcpScoringPrompt, getConnectionNotePrompt, getFollowupPrompt } from "@/lib/llm";
 import { createLinkedIn } from "@/lib/linkedin-provider";
 import { logActivity } from "@/lib/activity-log";
+import { setAgentStatus } from "@/lib/agent-status";
 
 export interface ToolResult {
   success: boolean;
@@ -93,6 +94,7 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
       const location = (args.location as string) || "United Kingdom";
       const maxResults = (args.count as number) || 25;
 
+      setAgentStatus(userId, `Starting Apify scrape: "${jobTitle}" in ${location}...`);
       await logActivity(userId, "apify_scrape", { level: "info", message: `Agent starting Apify: "${jobTitle}" in ${location}` });
 
       try {
@@ -110,6 +112,7 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
         let status = "RUNNING";
         for (let i = 0; i < 18; i++) {
           await new Promise(r => setTimeout(r, 10000));
+          setAgentStatus(userId, `Apify running... (${(i + 1) * 10}s elapsed)`);
           const check = await fetch(`https://api.apify.com/v2/actor-runs/${runId}`, { headers: { Authorization: `Bearer ${token}` } });
           status = (await check.json()).data?.status || "UNKNOWN";
           if (status === "SUCCEEDED" || status === "FAILED") break;
@@ -145,6 +148,7 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
 
     case "score_contacts": {
       if (!settings?.openrouterApiKey) return { success: false, message: "OpenRouter not configured." };
+      setAgentStatus(userId, "Loading unscored contacts...");
       const contacts = await prisma.contact.findMany({ where: { userId, fitRationale: null }, take: (args.limit as number) || 10 });
       if (contacts.length === 0) return { success: true, message: "All contacts are already scored." };
 
@@ -152,7 +156,9 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
       for (const c of contacts) {
         const text = [`Name: ${c.name}`, c.position && `Position: ${c.position}`, c.company && `Company: ${c.company}`].filter(Boolean).join("\n");
         try {
-          const resp = await callLLM(ICP_SCORING_PROMPT, text, settings.openrouterApiKey, settings.preferredModel);
+          setAgentStatus(userId, `Scoring ${c.name}...`);
+          const icpPrompt = getIcpScoringPrompt(settings.icpDefinition);
+          const resp = await callLLM(icpPrompt, text, settings.openrouterApiKey, settings.preferredModel);
           const parsed = JSON.parse(resp.trim());
           await prisma.contact.update({ where: { id: c.id }, data: { profileFit: parsed.fit || "MEDIUM", fitRationale: parsed.rationale || null } });
           results.push(`${c.name}: ${parsed.fit} — ${parsed.rationale}`);
@@ -165,6 +171,7 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
 
     case "prepare_invites": {
       if (!settings?.openrouterApiKey) return { success: false, message: "OpenRouter not configured." };
+      setAgentStatus(userId, "Preparing personalized invite messages via LLM...");
       const maxBatch = (args.count as number) || 10;
       const contacts = await prisma.contact.findMany({ where: { userId, status: "TO_CONTACT" }, orderBy: [{ profileFit: "asc" }, { createdAt: "asc" }], take: maxBatch });
       if (contacts.length === 0) return { success: true, message: "No contacts ready for invites." };

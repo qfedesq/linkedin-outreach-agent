@@ -84,6 +84,15 @@ export default function ChatPage() {
     setLoading(true);
     setThinkingSteps(["Analyzing request..."]);
 
+    // Poll for live status updates while agent works
+    const statusPoll = setInterval(async () => {
+      try {
+        const sr = await fetch("/api/chat/status");
+        const sd = await sr.json();
+        if (sd.steps?.length > 0) setThinkingSteps(sd.steps);
+      } catch {}
+    }, 2000);
+
     try {
       const res = await fetch("/api/chat", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -101,9 +110,11 @@ export default function ChatPage() {
         fetchStats();
       }
     } catch { toast.error("Failed"); }
+    clearInterval(statusPoll);
     setLoading(false);
     setThinkingSteps([]);
-    inputRef.current?.focus();
+    // Focus cursor back to input
+    setTimeout(() => inputRef.current?.focus(), 100);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {

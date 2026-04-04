@@ -1,6 +1,7 @@
 import { decrypt } from "@/lib/encryption";
 import { getToolDefinitions, executeTool } from "@/lib/agent-tools";
 import { prisma } from "@/lib/prisma";
+import { setAgentStatus, clearAgentStatus } from "@/lib/agent-status";
 
 function buildSystemPrompt(knowledge: string, autonomyLevel: string, strategyNotes: string) {
   return `You are the LinkedIn Outreach Agent for the Sky Protocol campaign by Protofire/arenas.fi.
@@ -64,9 +65,12 @@ export async function runAgent(
   let finalResponse = "";
   const newMessages: ChatMsg[] = [];
   let iterations = 0;
+  clearAgentStatus(userId);
+  setAgentStatus(userId, "Analyzing request...");
 
   while (iterations < 8) {
     iterations++;
+    setAgentStatus(userId, `Thinking... (step ${iterations})`);
 
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
@@ -84,8 +88,11 @@ export async function runAgent(
       newMessages.push({ role: "assistant", content: msg.content || "", tool_calls: msg.tool_calls });
 
       for (const tc of msg.tool_calls) {
+        const toolLabel = tc.function.name.replace(/_/g, " ");
+        setAgentStatus(userId, `Executing: ${toolLabel}...`);
         const args = JSON.parse(tc.function.arguments || "{}");
         const result = await executeTool(tc.function.name, args, userId);
+        setAgentStatus(userId, `Completed: ${toolLabel} — ${result.message.substring(0, 60)}`);
         const toolMsg: ChatMsg = { role: "tool", content: JSON.stringify(result), tool_call_id: tc.id };
         messages.push(toolMsg);
         newMessages.push(toolMsg);

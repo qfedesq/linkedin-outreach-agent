@@ -39,12 +39,7 @@ export async function callLLM(
   return data.choices[0].message.content;
 }
 
-export const ICP_SCORING_PROMPT = `You are an ICP (Ideal Customer Profile) scoring agent for the arenas.fi Sky Protocol campaign.
-
-CAMPAIGN: arenas.fi is assembling 5-10 specialty lenders/capital deployers to access a $100M stablecoin liquidity line from Sky Protocol ($7B+ DeFi reserve). Selected originators get committed USDS capital at competitive rates. Protofire handles all onchain integration.
-
-SCORING CRITERIA:
-TIER 1 (HIGH fit): Embedded finance/lending, Revenue-based financing, Merchant cash advances, Invoice/trade/supply chain finance, B2B BNPL
+const DEFAULT_ICP = `TIER 1 (HIGH fit): Embedded finance/lending, Revenue-based financing, Merchant cash advances, Invoice/trade/supply chain finance, B2B BNPL
 TIER 2 (MEDIUM fit): SMB lending, Real estate bridge lending, Specialty consumer lending, Equipment financing, Payroll/earned wage access
 TIER 3 (LOW fit): Digital banks with lending arms, Credit card issuers, Insurance-backed credit, Family offices with credit mandates
 
@@ -52,10 +47,21 @@ TARGET ROLES (boost score): CEO, Co-Founder, CFO, Head of Capital Markets, Chief
 SIGNALS OF FIT (boost score): Fast growth, capital-constrained, platform model, crypto-adjacent, recent capital markets hire
 DISQUALIFY (score as LOW regardless): Pure equity VC, 30-year mortgage, traditional bank, pre-Series A <$5M deployed
 
-GEOGRAPHY: UK > Europe > US > APAC (use as tiebreaker only)
+GEOGRAPHY: UK > Europe > US > APAC (use as tiebreaker only)`;
+
+export function getIcpScoringPrompt(customIcp?: string | null): string {
+  const criteria = customIcp || DEFAULT_ICP;
+  return `You are an ICP (Ideal Customer Profile) scoring agent.
+
+SCORING CRITERIA:
+${criteria}
 
 Given the following LinkedIn profile, respond with ONLY a JSON object:
 {"fit": "HIGH" | "MEDIUM" | "LOW", "rationale": "<1 sentence explaining why>"}`;
+}
+
+// Keep backward compat
+export const ICP_SCORING_PROMPT = getIcpScoringPrompt();
 
 export function getConnectionNotePrompt(calendarUrl: string): string {
   return `You are writing LinkedIn connection request notes for Andrei Yurkevich at Protofire/arenas.fi.
