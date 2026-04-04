@@ -66,6 +66,7 @@ model Contact {
   followupSentDate   DateTime?
   notes              String?
   source             String?
+  campaignId         String?
   enrichedAt         DateTime?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
@@ -139,9 +140,25 @@ model AgentKnowledge {
 }
 
 model ChatMessage {
-  id        String   @id @default(cuid())
-  userId    String
-  role      String   // "user", "assistant"
-  content   String
-  createdAt DateTime @default(now())
+  id         String   @id @default(cuid())
+  userId     String
+  campaignId String?
+  role       String   // "user", "assistant"
+  content    String
+  createdAt  DateTime @default(now())
+}
+
+model Campaign {
+  id                String   @id @default(cuid())
+  userId            String
+  name              String
+  description       String?
+  icpDefinition     String?
+  strategyNotes     String?
+  calendarUrl       String?
+  dailyInviteLimit  Int      @default(20)
+  followupDelayDays Int      @default(3)
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 }

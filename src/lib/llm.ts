@@ -1,5 +1,9 @@
 import { decrypt } from "@/lib/encryption";
 
+// In-memory usage tracker
+let sessionUsage = { totalTokens: 0, totalCost: 0, calls: 0 };
+export function getSessionUsage() { return { ...sessionUsage }; }
+
 interface LLMOptions {
   temperature?: number;
   maxTokens?: number;
@@ -36,6 +40,16 @@ export async function callLLM(
     throw new Error(`OpenRouter API error: ${response.status}`);
   }
   const data = await response.json();
+
+  // Track token usage
+  if (data.usage) {
+    const pt = data.usage.prompt_tokens || 0;
+    const ct = data.usage.completion_tokens || 0;
+    sessionUsage.totalTokens += pt + ct;
+    sessionUsage.totalCost += (pt * 0.003 + ct * 0.015) / 1000;
+    sessionUsage.calls++;
+  }
+
   return data.choices[0].message.content;
 }
 

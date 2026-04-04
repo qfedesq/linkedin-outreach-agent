@@ -149,10 +149,7 @@ export default function SettingsPage() {
         <CardHeader><CardTitle>OpenRouter</CardTitle><CardDescription>LLM for message personalization and ICP scoring</CardDescription></CardHeader>
         <CardContent className="space-y-4">
           <SecretInput id="openrouterApiKey" label="API Key" value={settings.openrouterApiKey || ""} onChange={v => setSettings(p => ({ ...p, openrouterApiKey: v }))} />
-          <div className="space-y-2">
-            <Label>Preferred Model</Label>
-            <Input value={settings.preferredModel} onChange={e => setSettings(p => ({ ...p, preferredModel: e.target.value }))} />
-          </div>
+          <ModelSelector value={settings.preferredModel} onChange={v => setSettings(p => ({ ...p, preferredModel: v }))} />
           <div className="flex items-center gap-4">
             <Button onClick={() => testService("openrouter", "/api/settings/test-openrouter")} disabled={testing.openrouter} size="sm">
               {testing.openrouter && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Test Connection
@@ -197,6 +194,29 @@ export default function SettingsPage() {
 
       {/* Knowledge Base */}
       <KnowledgeViewer />
+    </div>
+  );
+}
+
+function ModelSelector({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [models, setModels] = useState<Array<{ id: string; name: string; costPer1k: string }>>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    setLoading(true);
+    fetch("/api/models").then(r => r.json()).then(d => setModels(d.models || [])).catch(() => {}).finally(() => setLoading(false));
+  }, []);
+
+  return (
+    <div className="space-y-2">
+      <Label>Preferred Model</Label>
+      {models.length > 0 ? (
+        <select value={value} onChange={e => onChange(e.target.value)} className="w-full bg-card border border-border rounded px-3 py-2 text-sm">
+          {models.map(m => <option key={m.id} value={m.id}>{m.name} ({m.costPer1k}/1k)</option>)}
+        </select>
+      ) : (
+        <Input value={value} onChange={e => onChange(e.target.value)} placeholder={loading ? "Loading models..." : "anthropic/claude-sonnet-4"} />
+      )}
     </div>
   );
 }
