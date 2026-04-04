@@ -93,61 +93,53 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
 
     // ===== EXECUTION TOOLS =====
     case "discover_prospects": {
-      if (!settings?.apifyApiToken) return { success: false, message: "Apify not configured. Go to Settings." };
-      const token = decrypt(settings.apifyApiToken);
-      const jobTitle = (args.job_title as string) || "CEO";
-      const location = (args.location as string) || "United Kingdom";
-      const maxResults = (args.count as number) || 25;
+      const linkedin = settings ? createLinkedIn(settings) : null;
+      if (!linkedin) return { success: false, message: "Unipile not configured. Go to Settings." };
 
-      setAgentStatus(userId, `Starting Apify scrape: "${jobTitle}" in ${location}...`);
-      await logActivity(userId, "apify_scrape", { level: "info", message: `Agent starting Apify: "${jobTitle}" in ${location}` });
+      const keywords = (args.job_title as string) || "CEO fintech";
+      const location = (args.location as string) || undefined;
+
+      setAgentStatus(userId, `Searching LinkedIn: "${keywords}"...`);
+      await logActivity(userId, "linkedin_search", { level: "info", message: `Searching: "${keywords}"${location ? ` in ${location}` : ""}` });
 
       try {
-        // Start actor
-        const runRes = await fetch("https://api.apify.com/v2/acts/apimaestro~linkedin-profile-search-scraper/runs", {
-          method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ current_job_title: jobTitle, location, rows: maxResults }),
-        });
-        if (!runRes.ok) return { success: false, message: `Apify start failed: ${runRes.status}` };
-        const runData = await runRes.json();
-        const runId = runData.data?.id;
-        const datasetId = runData.data?.defaultDatasetId;
+        const results = await linkedin.searchPeople(keywords, { location });
+        const items = results?.items || [];
 
-        // Poll (max 3 min)
-        let status = "RUNNING";
-        for (let i = 0; i < 18; i++) {
-          await new Promise(r => setTimeout(r, 10000));
-          setAgentStatus(userId, `Apify running... (${(i + 1) * 10}s elapsed)`);
-          const check = await fetch(`https://api.apify.com/v2/actor-runs/${runId}`, { headers: { Authorization: `Bearer ${token}` } });
-          status = (await check.json()).data?.status || "UNKNOWN";
-          if (status === "SUCCEEDED" || status === "FAILED") break;
+        if (items.length === 0) {
+          return { success: true, message: "No results found. Try different keywords." };
         }
 
-        // Fetch results
-        const dataRes = await fetch(`https://api.apify.com/v2/datasets/${datasetId}/items?format=json`, { headers: { Authorization: `Bearer ${token}` } });
-        const profiles = await dataRes.json();
-        if (!Array.isArray(profiles) || profiles.length === 0) {
-          return { success: true, message: `Apify completed (${status}) but found 0 profiles. Try different job title or location.` };
-        }
+        setAgentStatus(userId, `Found ${items.length} profiles. Saving...`);
 
         let created = 0, skipped = 0;
-        for (const p of profiles) {
-          const basic = p.basic_info || p;
-          const url = (basic.profile_url || basic.url || "").toLowerCase().replace(/\/$/, "").split("?")[0];
+        for (const p of items) {
+          const url = (p.public_profile_url || p.profile_url || "").toLowerCase().replace(/\/$/, "").split("?")[0];
           if (!url.includes("linkedin.com/in/")) { skipped++; continue; }
-          const slug = url.match(/linkedin\.com\/in\/([^/?]+)/i)?.[1] || null;
-          const pName = basic.fullname || basic.name || `${basic.first_name || ""} ${basic.last_name || ""}`.trim() || "Unknown";
-          const exp = (p.experience || [])[0];
+          const slug = p.public_identifier || url.match(/linkedin\.com\/in\/([^/?]+)/i)?.[1] || null;
+          const providerId = p.member_urn || p.id || null;
+
           try {
-            await prisma.contact.create({ data: { name: pName, position: basic.headline || basic.title || null, company: exp?.company_name || null, linkedinUrl: url.replace(/^https?:\/\/(www\.)?linkedin\.com/, "https://www.linkedin.com"), linkedinSlug: slug, source: "apify", userId } });
+            await prisma.contact.create({
+              data: {
+                name: p.name || "Unknown",
+                position: p.headline || null,
+                company: null,
+                linkedinUrl: url.replace(/^https?:\/\/(www\.)?linkedin\.com/, "https://www.linkedin.com"),
+                linkedinSlug: slug,
+                linkedinProfileId: providerId,
+                source: "unipile",
+                userId,
+              },
+            });
             created++;
           } catch { skipped++; }
         }
 
-        await logActivity(userId, "apify_scrape", { level: "success", message: `Found ${profiles.length} profiles, saved ${created} new contacts`, success: true });
-        return { success: true, data: { total: profiles.length, created, skipped }, message: `Discovered ${created} new prospects (${skipped} duplicates/invalid skipped) from ${profiles.length} total profiles.` };
+        await logActivity(userId, "linkedin_search", { level: "success", message: `Found ${items.length}, saved ${created} new (${skipped} skipped)`, success: true });
+        return { success: true, data: { total: items.length, created, skipped }, message: `Found ${items.length} profiles on LinkedIn. Saved ${created} new contacts (${skipped} duplicates skipped).` };
       } catch (e) {
-        return { success: false, message: `Apify error: ${(e as Error).message}` };
+        return { success: false, message: `Search failed: ${(e as Error).message}` };
       }
     }
 

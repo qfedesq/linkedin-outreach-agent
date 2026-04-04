@@ -97,8 +97,18 @@ export class UnipileLinkedIn {
   }
 
   /** Search LinkedIn people (via Unipile) */
-  async searchPeople(query: string, limit = 10) {
-    return this.request(`/linkedin/search?account_id=${this.accountId}&q=${encodeURIComponent(query)}&limit=${limit}&category=people`);
+  async searchPeople(keywords: string, filters?: { title?: string; location?: string; industry?: string }) {
+    return this.request(`/linkedin/search?account_id=${this.accountId}`, {
+      method: "POST",
+      body: {
+        api: "classic",
+        category: "people",
+        keywords,
+        ...(filters?.title && { title: filters.title }),
+        ...(filters?.location && { location: filters.location }),
+        ...(filters?.industry && { industry: filters.industry }),
+      },
+    });
   }
 
   /** Get own profile */
