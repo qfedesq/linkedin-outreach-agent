@@ -14,21 +14,30 @@ export async function GET() {
     if (!res.ok) return NextResponse.json({ models: [] });
 
     const data = await res.json();
-    // Filter to popular/useful models and sort by name
+
+    // Include all major providers — no restrictive filter
+    const PROVIDERS = [
+      "anthropic", "openai", "google", "meta", "mistral", "deepseek",
+      "qwen", "cohere", "nvidia", "microsoft", "x-ai", "moonshot", "kimi",
+      "inflection", "perplexity", "together", "fireworks", "groq",
+    ];
+
     const models = (data.data || [])
       .filter((m: { id: string }) => {
         const id = m.id.toLowerCase();
-        return id.includes("claude") || id.includes("gpt") || id.includes("gemini") ||
-               id.includes("llama") || id.includes("mistral") || id.includes("deepseek") ||
-               id.includes("qwen");
+        // Include if from a known provider OR if it's a popular model name
+        return PROVIDERS.some(p => id.includes(p)) ||
+               id.includes("gpt") || id.includes("claude") || id.includes("gemini") ||
+               id.includes("llama") || id.includes("command") || id.includes("phi") ||
+               id.includes("yi-") || id.includes("wizard") || id.includes("solar") ||
+               id.includes("nemotron") || id.includes("o1") || id.includes("o3") || id.includes("o4");
       })
       .map((m: { id: string; name: string; pricing?: { prompt: string; completion: string } }) => ({
         id: m.id,
         name: m.name || m.id,
-        costPer1k: m.pricing ? `$${(parseFloat(m.pricing.prompt) * 1000).toFixed(4)}` : "?",
+        costPer1k: m.pricing?.prompt ? `$${(parseFloat(m.pricing.prompt) * 1000).toFixed(4)}` : "free",
       }))
-      .sort((a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name))
-      .slice(0, 50);
+      .sort((a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name));
 
     return NextResponse.json({ models });
   } catch {

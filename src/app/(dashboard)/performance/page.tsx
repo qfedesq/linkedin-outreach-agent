@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { TrendingUp, Target, MessageSquare, Users, Calendar, ArrowRight } from "lucide-react";
+import { TrendingUp, Target, MessageSquare, Users, Calendar } from "lucide-react";
 
 interface PerfData {
   funnel: Record<string, number>;
@@ -32,10 +33,17 @@ function RateBar({ label, value, color }: { label: string; value: number; color:
 
 export default function PerformancePage() {
   const [data, setData] = useState<PerfData | null>(null);
+  const [campaignFilter, setCampaignFilter] = useState("all");
+  const [campaigns, setCampaigns] = useState<Array<{ id: string; name: string }>>([]);
 
   useEffect(() => {
-    fetch("/api/performance").then(r => r.json()).then(setData).catch(() => {});
+    fetch("/api/campaigns").then(r => r.json()).then(d => setCampaigns(d.campaigns || [])).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    const params = campaignFilter !== "all" ? `?campaignId=${campaignFilter}` : "";
+    fetch(`/api/performance${params}`).then(r => r.json()).then(setData).catch(() => {});
+  }, [campaignFilter]);
 
   if (!data) return <div className="py-20 text-center text-muted-foreground">Loading performance data...</div>;
 
@@ -55,6 +63,13 @@ export default function PerformancePage() {
         <h1 className="text-2xl font-bold flex items-center gap-2"><TrendingUp className="h-6 w-6" />Performance</h1>
         <p className="text-sm text-muted-foreground">Campaign analytics and learning insights</p>
       </div>
+      <Select value={campaignFilter} onValueChange={(v) => { if (v) setCampaignFilter(v); }}>
+        <SelectTrigger className="w-48"><SelectValue placeholder="All campaigns" /></SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">All campaigns</SelectItem>
+          {campaigns.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+        </SelectContent>
+      </Select>
 
       {/* Conversion Funnel */}
       <Card>

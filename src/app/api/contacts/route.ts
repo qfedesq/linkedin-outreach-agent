@@ -26,9 +26,12 @@ export async function GET(request: NextRequest) {
   const page = parseInt(searchParams.get("page") || "1");
   const limit = parseInt(searchParams.get("limit") || "50");
 
+  const campaignId = searchParams.get("campaignId");
+
   const where: Record<string, unknown> = { userId: user.id };
   if (status) where.status = status;
   if (fit) where.profileFit = fit;
+  if (campaignId) where.campaignId = campaignId;
   if (search) {
     where.OR = [
       { name: { contains: search } },

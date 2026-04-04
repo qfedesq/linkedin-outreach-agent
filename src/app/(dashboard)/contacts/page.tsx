@@ -58,20 +58,27 @@ export default function ContactsPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [fitFilter, setFitFilter] = useState("all");
+  const [campaignFilter, setCampaignFilter] = useState("all");
+  const [campaigns, setCampaigns] = useState<Array<{ id: string; name: string }>>([]);
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    fetch("/api/campaigns").then(r => r.json()).then(d => setCampaigns(d.campaigns || [])).catch(() => {});
+  }, []);
 
   const fetchContacts = useCallback(async () => {
     const params = new URLSearchParams({ page: page.toString(), limit: "50" });
     if (search) params.set("search", search);
     if (statusFilter !== "all") params.set("status", statusFilter);
     if (fitFilter !== "all") params.set("fit", fitFilter);
+    if (campaignFilter !== "all") params.set("campaignId", campaignFilter);
 
     const res = await fetch(`/api/contacts?${params}`);
     const data = await res.json();
     setContacts(data.contacts);
     setTotal(data.total);
-  }, [page, search, statusFilter, fitFilter]);
+  }, [page, search, statusFilter, fitFilter, campaignFilter]);
 
   useEffect(() => {
     fetchContacts();
@@ -155,6 +162,15 @@ export default function ContactsPage() {
                 <SelectItem value="HIGH">High</SelectItem>
                 <SelectItem value="MEDIUM">Medium</SelectItem>
                 <SelectItem value="LOW">Low</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={campaignFilter} onValueChange={(v) => { if (v) { setCampaignFilter(v); setPage(1); } }}>
+              <SelectTrigger className="w-40">
+                <SelectValue placeholder="Campaign" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All campaigns</SelectItem>
+                {campaigns.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>

@@ -1,18 +1,24 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser, unauthorized } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const user = await getAuthUser();
   if (!user) return unauthorized();
+
+  const campaignId = request.nextUrl.searchParams.get("campaignId");
+
+  // Base filter — optional campaign filter
+  const baseWhere: Record<string, unknown> = { userId: user.id };
+  if (campaignId) baseWhere.campaignId = campaignId;
 
   // Pipeline counts
   const statuses = ["TO_CONTACT", "INVITED", "CONNECTED", "FOLLOWED_UP", "REPLIED", "MEETING_BOOKED", "UNRESPONSIVE"];
   const counts: Record<string, number> = {};
   for (const s of statuses) {
-    counts[s] = await prisma.contact.count({ where: { userId: user.id, status: s } });
+    counts[s] = await prisma.contact.count({ where: { ...baseWhere, status: s } });
   }
-  const total = await prisma.contact.count({ where: { userId: user.id } });
+  const total = await prisma.contact.count({ where: baseWhere });
 
   // Conversion rates
   const inviteRate = total > 0 ? Math.round((counts.INVITED + counts.CONNECTED + counts.FOLLOWED_UP + counts.REPLIED + counts.MEETING_BOOKED) / total * 100) : 0;
