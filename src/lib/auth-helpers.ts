@@ -28,10 +28,31 @@ export async function getAuthUser() {
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) return null;
 
-  const user = await prisma.user.findUnique({
+  let user = await prisma.user.findUnique({
     where: { email: session.user.email },
     include: { settings: true },
   });
+
+  if (!user) return null;
+
+  // If user has no settings, try to copy from dev user (for bootstrapping)
+  if (!user.settings) {
+    const devUser = await prisma.user.findUnique({
+      where: { email: DEV_EMAIL },
+      include: { settings: true },
+    });
+    if (devUser?.settings) {
+      const { id: _id, userId: _uid, ...settingsData } = devUser.settings;
+      await prisma.userSettings.create({
+        data: { ...settingsData, userId: user.id },
+      });
+      // Re-fetch with settings
+      user = await prisma.user.findUnique({
+        where: { email: session.user.email },
+        include: { settings: true },
+      });
+    }
+  }
 
   return user;
 }
