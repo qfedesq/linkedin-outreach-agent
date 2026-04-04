@@ -35,23 +35,13 @@ export async function getAuthUser() {
 
   if (!user) return null;
 
-  // If user has no settings, try to copy from dev user (for bootstrapping)
+  // If user has no settings, create empty settings row (user must configure their own credentials)
   if (!user.settings) {
-    const devUser = await prisma.user.findUnique({
-      where: { email: DEV_EMAIL },
+    await prisma.userSettings.create({ data: { userId: user.id } });
+    user = await prisma.user.findUnique({
+      where: { email: session.user.email },
       include: { settings: true },
     });
-    if (devUser?.settings) {
-      const { id: _id, userId: _uid, ...settingsData } = devUser.settings;
-      await prisma.userSettings.create({
-        data: { ...settingsData, userId: user.id },
-      });
-      // Re-fetch with settings
-      user = await prisma.user.findUnique({
-        where: { email: session.user.email },
-        include: { settings: true },
-      });
-    }
   }
 
   return user;
