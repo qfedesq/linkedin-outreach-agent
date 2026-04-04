@@ -66,14 +66,14 @@ export async function POST() {
         user.settings.openrouterApiKey, user.settings.preferredModel,
         { temperature: 0.8, maxTokens: 200 }
       );
-      message = message.trim().substring(0, 300);
+      message = message.trim().substring(0, 200);
 
       await logActivity(user.id, "prepare_invites", {
         level: "success",
         message: `Generated note for ${contact.name} (${message.length} chars): "${message.substring(0, 80)}..."`,
       });
     } catch {
-      message = `${contact.name.split(" ")[0]} — would love to connect and share how arenas.fi's $100M Sky Protocol facility could support ${contact.company || "your"} lending operations. Open to a quick call?`.substring(0, 300);
+      message = `${contact.name.split(" ")[0]} — would love to connect and share how arenas.fi's $100M Sky Protocol facility could support ${contact.company || "your"} lending operations. Open to a quick call?`.substring(0, 200);
     }
 
     const item = await prisma.inviteBatchItem.create({

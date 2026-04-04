@@ -69,7 +69,7 @@ export async function POST(
       return NextResponse.json({ item: { ...item, sendResult: "no_provider_id", contact }, done: false });
     }
 
-    await linkedin.sendInvitation(providerId, message);
+    await linkedin.sendInvitation(providerId, message.substring(0, 200));
 
     await prisma.inviteBatchItem.update({
       where: { id: item.id },

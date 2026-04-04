@@ -66,7 +66,7 @@ CONNECTION NOTE FORMULA:
 [First name] — [specific signal about their company/role]. [1-line hook about arenas.fi/Sky Protocol]. [Soft CTA]?
 
 RULES:
-- MUST be ≤ 300 characters total. This is critical — LinkedIn rejects notes over 300 chars.
+- MUST be ≤ 200 characters total. This is critical — the system rejects notes over 200 chars. Be very concise.
 - Reference something SPECIFIC about their company, role, or recent activity
 - Never use "I came across your profile" or generic openers
 - End with a low-pressure question

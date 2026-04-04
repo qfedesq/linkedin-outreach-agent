@@ -177,7 +177,7 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
         const userPrompt = [`Name: ${c.name}`, c.position && `Position: ${c.position}`, c.company && `Company: ${c.company}`, c.fitRationale && `Fit: ${c.fitRationale}`].filter(Boolean).join("\n");
         let msg = "";
         try {
-          msg = (await callLLM(systemPrompt, userPrompt, settings.openrouterApiKey, settings.preferredModel, { temperature: 0.8, maxTokens: 200 })).trim().substring(0, 300);
+          msg = (await callLLM(systemPrompt, userPrompt, settings.openrouterApiKey, settings.preferredModel, { temperature: 0.8, maxTokens: 200 })).trim().substring(0, 200);
         } catch {
           msg = `${c.name.split(" ")[0]} — would love to connect about arenas.fi's $100M Sky Protocol facility. Open to a quick call?`.substring(0, 300);
         }
@@ -216,7 +216,7 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
         if (!providerId) { failed++; continue; }
 
         try {
-          await linkedin.sendInvitation(providerId, item.editedMessage || item.draftMessage);
+          await linkedin.sendInvitation(providerId, (item.editedMessage || item.draftMessage).substring(0, 200));
           await prisma.inviteBatchItem.update({ where: { id: item.id }, data: { sent: true, sentAt: new Date(), sendResult: "success" } });
           await prisma.contact.update({ where: { id: contact.id }, data: { status: "INVITED", inviteSentDate: new Date(), connectionMessage: item.editedMessage || item.draftMessage } });
           sent++;
