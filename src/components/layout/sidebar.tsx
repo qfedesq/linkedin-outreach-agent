@@ -41,7 +41,7 @@ export function Sidebar() {
       .then(r => r.json())
       .then(d => setUsage(d))
       .catch(() => {});
-  }, []);
+  }, [pathname]); // Re-fetch when user navigates (e.g. after toggling campaign status)
 
   const createCampaign = async () => {
     const name = prompt("Campaign name:");
