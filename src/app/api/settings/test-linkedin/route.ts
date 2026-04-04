@@ -1,26 +1,20 @@
 import { NextResponse } from "next/server";
 import { getAuthUser, unauthorized } from "@/lib/auth-helpers";
-import { decrypt } from "@/lib/encryption";
-import { UnipileLinkedIn } from "@/lib/linkedin-unipile";
-
-const UNIPILE_DSN = "https://api17.unipile.com:14777";
+import { createLinkedIn } from "@/lib/linkedin-provider";
 
 export async function POST() {
   const user = await getAuthUser();
   if (!user?.settings) return unauthorized();
 
-  const { unipileApiKey, unipileAccountId } = user.settings;
-
-  if (!unipileApiKey || !unipileAccountId) {
+  const client = createLinkedIn(user.settings);
+  if (!client) {
     return NextResponse.json({
       success: false,
-      error: "Unipile not configured. Save your API Key and Account ID first, then test.",
+      error: "Unipile not configured. Save your API Key, DSN, and Account ID first, then test.",
     });
   }
 
   try {
-    const apiKey = decrypt(unipileApiKey);
-    const client = new UnipileLinkedIn(UNIPILE_DSN, apiKey, unipileAccountId);
     const result = await client.testConnection();
     return NextResponse.json({
       success: result.success,

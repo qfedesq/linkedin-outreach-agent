@@ -42,7 +42,7 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    fetch("/api/settings?reveal=true")
+    fetch("/api/settings")
       .then(r => r.json())
       .then(data => setSettings(prev => ({ ...prev, ...data })))
       .catch(() => {});
@@ -110,10 +110,17 @@ export default function SettingsPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <SecretInput id="unipileApiKey" label="Unipile API Key" value={settings.unipileApiKey || ""} onChange={v => setSettings(p => ({ ...p, unipileApiKey: v }))} />
-          <div className="space-y-2">
-            <Label>Account ID</Label>
-            <Input value={settings.unipileAccountId || ""} onChange={e => setSettings(p => ({ ...p, unipileAccountId: e.target.value }))} placeholder="e.g., CNyD9GLrR5WUtv1UuWbGrQ" />
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>DSN (Server URL)</Label>
+              <Input value={(settings as unknown as Record<string, string>).unipileDsn || "https://api17.unipile.com:14777"} onChange={e => setSettings(p => ({ ...p, unipileDsn: e.target.value } as Settings))} placeholder="https://api17.unipile.com:14777" />
+            </div>
+            <div className="space-y-2">
+              <Label>Account ID</Label>
+              <Input value={settings.unipileAccountId || ""} onChange={e => setSettings(p => ({ ...p, unipileAccountId: e.target.value }))} placeholder="e.g., CNyD9GLrR5WUtv1UuWbGrQ" />
+            </div>
           </div>
+          <p className="text-[10px] text-muted-foreground">If the API Key shows wrong after save, clear it, paste the real key, and save again.</p>
           <div className="flex items-center gap-4">
             <Button onClick={() => testService("linkedin", "/api/settings/test-linkedin")} disabled={testing.linkedin} size="sm">
               {testing.linkedin && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Test Connection

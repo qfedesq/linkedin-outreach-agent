@@ -36,6 +36,7 @@ export async function GET(request: NextRequest) {
       autopilotEnabled: settings.autopilotEnabled,
       unipileApiKey: settings.unipileApiKey ? decrypt(settings.unipileApiKey) : null,
       unipileAccountId: settings.unipileAccountId,
+      unipileDsn: settings.unipileDsn,
     });
   }
 
@@ -111,6 +112,7 @@ export async function PUT(request: Request) {
     data.unipileApiKey = body.unipileApiKey ? encrypt(body.unipileApiKey) : null;
   }
   if (body.unipileAccountId !== undefined) data.unipileAccountId = body.unipileAccountId || null;
+  if (body.unipileDsn !== undefined) data.unipileDsn = body.unipileDsn || "https://api17.unipile.com:14777";
 
   await prisma.userSettings.upsert({
     where: { userId: user.id },

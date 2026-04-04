@@ -43,6 +43,7 @@ model UserSettings {
   // Unipile integration
   unipileApiKey         String?
   unipileAccountId      String?
+  unipileDsn            String    @default("https://api17.unipile.com:14777")
 }
 
 model Contact {
