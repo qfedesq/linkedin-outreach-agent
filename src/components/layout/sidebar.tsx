@@ -85,13 +85,19 @@ export function Sidebar() {
           {campaigns.length === 0 && (
             <p className="px-3 text-[10px] text-muted-foreground/50 italic">No campaigns yet</p>
           )}
-          {campaigns.map(c => (
-            <Link key={c.id} href={`/settings`} className="flex items-center gap-2 px-3 py-1.5 text-[11px] text-muted-foreground hover:text-foreground hover:bg-accent rounded transition-colors">
-              <Megaphone className="w-3 h-3" />
-              <span className="truncate">{c.name}</span>
-              {c.isActive && <span className="w-1.5 h-1.5 rounded-full bg-success shrink-0 ml-auto" />}
-            </Link>
-          ))}
+          {campaigns.map(c => {
+            const isActive = pathname === `/campaigns/${c.id}`;
+            return (
+              <Link key={c.id} href={`/campaigns/${c.id}`} className={cn(
+                "flex items-center gap-2 px-3 py-1.5 text-[11px] rounded transition-colors",
+                isActive ? "bg-accent text-primary font-semibold" : "text-muted-foreground hover:text-foreground hover:bg-accent"
+              )}>
+                <Megaphone className="w-3 h-3 shrink-0" />
+                <span className="truncate">{c.name}</span>
+                {c.isActive && <span className="w-1.5 h-1.5 rounded-full bg-success shrink-0 ml-auto" />}
+              </Link>
+            );
+          })}
         </div>
       </nav>
 

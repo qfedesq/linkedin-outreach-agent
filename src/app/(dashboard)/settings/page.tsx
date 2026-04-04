@@ -159,31 +159,21 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
-      {/* Campaign Configuration */}
+      {/* Agent Behavior */}
       <Card>
         <CardHeader>
-          <CardTitle>Campaign</CardTitle>
-          <CardDescription>Define your outreach campaign. The agent uses these to personalize messages.</CardDescription>
+          <CardTitle>Agent Behavior</CardTitle>
+          <CardDescription>Global settings. Campaign-specific config (ICP, strategy) is in each campaign page — click a campaign in the sidebar.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2"><Label>Campaign Name</Label><Input value={settings.campaignName} onChange={e => setSettings(p => ({ ...p, campaignName: e.target.value }))} /></div>
-            <div className="space-y-2"><Label>Calendar Booking URL</Label><Input value={settings.calendarBookingUrl} onChange={e => setSettings(p => ({ ...p, calendarBookingUrl: e.target.value }))} /></div>
-          </div>
-          <div className="space-y-2"><Label>Campaign Description</Label><Textarea value={settings.campaignDescription || ""} onChange={e => setSettings(p => ({ ...p, campaignDescription: e.target.value }))} placeholder="Brief description of the campaign..." rows={3} /></div>
-          <div className="space-y-2"><Label>ICP Definition</Label><Textarea value={settings.icpDefinition || ""} onChange={e => setSettings(p => ({ ...p, icpDefinition: e.target.value }))} placeholder="Industries, roles, company sizes, signals..." rows={3} /></div>
-          <div className="space-y-2"><Label>Strategy Notes (agent reads these)</Label><Textarea value={settings.strategyNotes || ""} onChange={e => setSettings(p => ({ ...p, strategyNotes: e.target.value }))} placeholder="Tone, messaging style, what to emphasize..." rows={3} /></div>
-          <div className="grid grid-cols-3 gap-4">
-            <div className="space-y-2"><Label>Daily Invite Limit</Label><Input type="number" value={settings.dailyInviteLimit} onChange={e => setSettings(p => ({ ...p, dailyInviteLimit: parseInt(e.target.value) || 20 }))} /></div>
-            <div className="space-y-2"><Label>Follow-up Delay (days)</Label><Input type="number" value={settings.followupDelayDays} onChange={e => setSettings(p => ({ ...p, followupDelayDays: parseInt(e.target.value) || 3 }))} /></div>
-            <div className="space-y-2">
-              <Label>Agent Autonomy</Label>
-              <select value={(settings as unknown as Record<string, string>).autonomyLevel || "training"} onChange={e => setSettings(p => ({ ...p, autonomyLevel: e.target.value } as Settings))} className="w-full bg-card border border-border rounded px-3 py-2 text-sm">
-                <option value="training">Training — asks before sending</option>
-                <option value="semi">Semi-auto — sends low-risk, asks for invites</option>
-                <option value="full">Full auto — executes everything</option>
-              </select>
-            </div>
+          <div className="space-y-2">
+            <Label>Agent Autonomy Level</Label>
+            <select value={(settings as unknown as Record<string, string>).autonomyLevel || "training"} onChange={e => setSettings(p => ({ ...p, autonomyLevel: e.target.value } as Settings))} className="w-full bg-card border border-border rounded px-3 py-2 text-sm">
+              <option value="training">Training — asks before sending</option>
+              <option value="semi">Semi-auto — auto discover/score, asks for sends</option>
+              <option value="full">Full auto — executes everything autonomously</option>
+            </select>
+            <p className="text-[10px] text-muted-foreground">Campaign config (ICP, strategy, calendar) is now per-campaign. Click a campaign in the sidebar to configure it.</p>
           </div>
         </CardContent>
       </Card>
