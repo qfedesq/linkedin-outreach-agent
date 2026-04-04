@@ -4,60 +4,72 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
-import { Send, Loader2, Bot, User, Sparkles, Users, UserCheck, Inbox, Calendar } from "lucide-react";
+import { Send, Loader2, Bot, User, Sparkles, Users, UserCheck, Inbox, Calendar, Wrench, CheckCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-interface Message { role: "user" | "assistant"; content: string }
-interface Stats { total: number; toContact: number; invited: number; connected: number; replied: number; meetings: number }
+interface Message { role: "user" | "assistant"; content: string; steps?: Step[] }
+interface Step { type: "call" | "result"; tool: string; args?: string; message?: string }
+interface Stats { total: number; invited: number; connected: number; replied: number; meetings: number }
 
 const SUGGESTIONS = [
   "What should we do next?",
-  "Show me the pipeline status",
-  "Discover 20 CEOs in United Kingdom",
+  "Show me the pipeline",
+  "Discover 20 CEOs in UK",
   "Score all unscored contacts",
-  "Prepare invites for HIGH fit contacts",
+  "Prepare invites for HIGH fit",
   "Run the daily cycle",
 ];
+
+const TOOL_LABELS: Record<string, string> = {
+  get_pipeline_stats: "Checking pipeline",
+  search_contacts: "Searching contacts",
+  discover_prospects: "Running Apify scrape",
+  score_contacts: "Scoring with LLM",
+  prepare_invites: "Generating invites",
+  send_invites: "Sending via LinkedIn",
+  check_connections_and_inbox: "Checking connections & inbox",
+  send_followups: "Sending follow-ups",
+  run_full_cycle: "Running daily cycle",
+  get_performance: "Analyzing performance",
+  get_recent_activity: "Loading activity",
+  learn: "Saving to knowledge",
+  get_knowledge: "Loading knowledge",
+};
 
 export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [thinkingSteps, setThinkingSteps] = useState<string[]>([]);
   const [history, setHistory] = useState<Array<{ role: string; content: string }>>([]);
-  const [stats, setStats] = useState<Stats>({ total: 0, toContact: 0, invited: 0, connected: 0, replied: 0, meetings: 0 });
+  const [stats, setStats] = useState<Stats>({ total: 0, invited: 0, connected: 0, replied: 0, meetings: 0 });
   const [initialized, setInitialized] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // Auto-scroll
-  useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [messages]);
+  useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [messages, thinkingSteps]);
 
-  // Load stats
   const fetchStats = useCallback(async () => {
     try {
-      const statuses = ["TO_CONTACT","INVITED","CONNECTED","REPLIED","MEETING_BOOKED"];
+      const statuses = ["INVITED","CONNECTED","REPLIED","MEETING_BOOKED"];
       const results = await Promise.all(statuses.map(s => fetch(`/api/contacts?status=${s}&limit=1`).then(r => r.json()).then(d => ({ s, n: d.total || 0 }))));
       const total = await fetch("/api/contacts?limit=1").then(r => r.json()).then(d => d.total || 0);
       const m: Record<string, number> = {};
       results.forEach(r => m[r.s] = r.n);
-      setStats({ total, toContact: m.TO_CONTACT || 0, invited: m.INVITED || 0, connected: m.CONNECTED || 0, replied: m.REPLIED || 0, meetings: m.MEETING_BOOKED || 0 });
+      setStats({ total, invited: m.INVITED || 0, connected: m.CONNECTED || 0, replied: m.REPLIED || 0, meetings: m.MEETING_BOOKED || 0 });
     } catch {}
   }, []);
 
-  // Load persisted chat history + greeting
   useEffect(() => {
     if (initialized) return;
     setInitialized(true);
     fetchStats();
-
     fetch("/api/chat").then(r => r.json()).then(data => {
       if (data.history?.length > 0) {
         setMessages(data.history.map((m: { role: string; content: string }) => ({ role: m.role as "user" | "assistant", content: m.content })));
         setHistory(data.history);
       }
-      if (data.greeting) {
-        setMessages(prev => [...prev, { role: "assistant", content: data.greeting }]);
-      }
+      if (data.greeting) setMessages(prev => [...prev, { role: "assistant", content: data.greeting }]);
     }).catch(() => {});
   }, [initialized, fetchStats]);
 
@@ -67,6 +79,7 @@ export default function ChatPage() {
     setInput("");
     setMessages(prev => [...prev, { role: "user", content: msg }]);
     setLoading(true);
+    setThinkingSteps(["Analyzing request..."]);
 
     try {
       const res = await fetch("/api/chat", {
@@ -74,16 +87,19 @@ export default function ChatPage() {
         body: JSON.stringify({ message: msg, history }),
       });
       const data = await res.json();
+
       if (data.error) {
         toast.error(data.error);
         setMessages(prev => [...prev, { role: "assistant", content: `Error: ${data.error}` }]);
       } else {
-        setMessages(prev => [...prev, { role: "assistant", content: data.response }]);
+        const steps: Step[] = data.steps || [];
+        setMessages(prev => [...prev, { role: "assistant", content: data.response, steps }]);
         setHistory(prev => [...prev, { role: "user", content: msg }, { role: "assistant", content: data.response }].slice(-30));
-        fetchStats(); // Refresh stats after agent action
+        fetchStats();
       }
     } catch { toast.error("Failed"); }
     setLoading(false);
+    setThinkingSteps([]);
     inputRef.current?.focus();
   };
 
@@ -121,9 +137,7 @@ export default function ChatPage() {
                 <Sparkles className="h-7 w-7 text-primary" />
               </div>
               <h2 className="text-lg font-bold mb-1">Outreach Agent</h2>
-              <p className="text-xs text-muted-foreground mb-6 max-w-sm">
-                I discover prospects, score them, generate personalized invites, and optimize for meetings. Tell me what to do.
-              </p>
+              <p className="text-xs text-muted-foreground mb-6 max-w-sm">Tell me what to do. I can discover prospects, score them, generate invites, and run the full outreach cycle.</p>
               <div className="grid grid-cols-2 gap-2 w-full max-w-md">
                 {SUGGESTIONS.map(s => (
                   <button key={s} onClick={() => sendMessage(s)} className="text-left text-[11px] p-2.5 rounded-lg border border-border hover:bg-accent transition-colors text-muted-foreground hover:text-foreground">{s}</button>
@@ -133,35 +147,56 @@ export default function ChatPage() {
           )}
 
           {messages.map((msg, i) => (
-            <div key={i} className={cn("flex gap-2.5", msg.role === "user" ? "justify-end" : "")}>
-              {msg.role === "assistant" && (
-                <div className="w-6 h-6 rounded-md bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
-                  <Bot className="h-3.5 w-3.5 text-primary" />
+            <div key={i}>
+              <div className={cn("flex gap-2.5", msg.role === "user" ? "justify-end" : "")}>
+                {msg.role === "assistant" && (
+                  <div className="w-6 h-6 rounded-md bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+                    <Bot className="h-3.5 w-3.5 text-primary" />
+                  </div>
+                )}
+                <div className={cn("max-w-[85%] rounded-lg px-3 py-2 text-[13px] leading-relaxed", msg.role === "user" ? "bg-primary text-primary-foreground" : "bg-card border border-border")}>
+                  {msg.role === "assistant" ? (
+                    <div className="prose prose-sm prose-invert max-w-none [&_p]:my-1 [&_ul]:my-1 [&_li]:my-0 [&_strong]:text-foreground [&_code]:text-[11px] [&_code]:bg-muted [&_code]:px-1 [&_code]:rounded" dangerouslySetInnerHTML={{ __html: fmtMd(msg.content) }} />
+                  ) : <span>{msg.content}</span>}
                 </div>
-              )}
-              <div className={cn(
-                "max-w-[85%] rounded-lg px-3 py-2 text-[13px] leading-relaxed",
-                msg.role === "user" ? "bg-primary text-primary-foreground" : "bg-card border border-border"
-              )}>
-                {msg.role === "assistant" ? (
-                  <div className="prose prose-sm prose-invert max-w-none [&_p]:my-1 [&_ul]:my-1 [&_li]:my-0 [&_strong]:text-foreground [&_code]:text-[11px] [&_code]:bg-muted [&_code]:px-1 [&_code]:rounded" dangerouslySetInnerHTML={{ __html: fmtMd(msg.content) }} />
-                ) : <span>{msg.content}</span>}
+                {msg.role === "user" && (
+                  <div className="w-6 h-6 rounded-md bg-muted flex items-center justify-center shrink-0 mt-0.5">
+                    <User className="h-3.5 w-3.5 text-muted-foreground" />
+                  </div>
+                )}
               </div>
-              {msg.role === "user" && (
-                <div className="w-6 h-6 rounded-md bg-muted flex items-center justify-center shrink-0 mt-0.5">
-                  <User className="h-3.5 w-3.5 text-muted-foreground" />
+              {/* Tool steps (thinking trail) */}
+              {msg.steps && msg.steps.length > 0 && (
+                <div className="ml-8 mt-1 space-y-0.5">
+                  {msg.steps.map((step, j) => (
+                    <div key={j} className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-mono">
+                      {step.type === "call" ? (
+                        <><Wrench className="h-2.5 w-2.5 text-primary/60" /><span className="text-primary/80">{TOOL_LABELS[step.tool] || step.tool}</span></>
+                      ) : (
+                        <><CheckCircle className="h-2.5 w-2.5 text-success/60" /><span className="truncate max-w-md">{step.message}</span></>
+                      )}
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
           ))}
 
+          {/* Thinking indicator */}
           {loading && (
             <div className="flex gap-2.5">
               <div className="w-6 h-6 rounded-md bg-primary/10 flex items-center justify-center shrink-0">
                 <Bot className="h-3.5 w-3.5 text-primary animate-pulse" />
               </div>
-              <div className="bg-card border border-border rounded-lg px-3 py-2 flex items-center gap-2 text-xs text-muted-foreground">
-                <Loader2 className="h-3 w-3 animate-spin" />Thinking...
+              <div className="bg-card border border-border rounded-lg px-3 py-2 space-y-1">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Loader2 className="h-3 w-3 animate-spin" />Working...
+                </div>
+                {thinkingSteps.map((s, i) => (
+                  <div key={i} className="text-[10px] font-mono text-primary/60 flex items-center gap-1">
+                    <Wrench className="h-2.5 w-2.5" />{s}
+                  </div>
+                ))}
               </div>
             </div>
           )}

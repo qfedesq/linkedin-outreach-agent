@@ -187,6 +187,62 @@ export default function SettingsPage() {
       <Button onClick={handleSave} disabled={saving} size="lg" className="w-full">
         {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save Settings
       </Button>
+
+      {/* Knowledge Base */}
+      <KnowledgeViewer />
     </div>
+  );
+}
+
+function KnowledgeViewer() {
+  const [knowledge, setKnowledge] = useState<Array<{ id: string; category: string; content: string; source: string; createdAt: string }>>([]);
+
+  useEffect(() => {
+    fetch("/api/knowledge").then(r => r.json()).then(d => setKnowledge(d.knowledge || [])).catch(() => {});
+  }, []);
+
+  const deleteItem = async (id: string) => {
+    await fetch("/api/knowledge", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
+    setKnowledge(prev => prev.filter(k => k.id !== id));
+  };
+
+  const catColors: Record<string, string> = {
+    message_style: "bg-purple-500/10 text-purple-400",
+    icp_insight: "bg-green-500/10 text-green-400",
+    strategy: "bg-blue-500/10 text-blue-400",
+    correction: "bg-amber-500/10 text-amber-400",
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center justify-between">
+          <span>Agent Knowledge Base</span>
+          <Badge variant="outline" className="text-[10px]">{knowledge.length} entries</Badge>
+        </CardTitle>
+        <CardDescription>What the agent has learned from your feedback. This persists across sessions.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {knowledge.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-4 text-center">
+            No knowledge yet. The agent learns when you give corrections in the chat.<br/>
+            Try: &ldquo;Remember that we should use a more casual tone&rdquo;
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {knowledge.map(k => (
+              <div key={k.id} className="flex items-start gap-3 p-2 rounded border border-border hover:bg-accent/30 group">
+                <Badge variant="secondary" className={`text-[9px] px-1.5 py-0 shrink-0 mt-0.5 ${catColors[k.category] || "bg-muted"}`}>{k.category}</Badge>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs">{k.content}</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">{new Date(k.createdAt).toLocaleDateString()} via {k.source}</p>
+                </div>
+                <button onClick={() => deleteItem(k.id)} className="text-[10px] text-muted-foreground hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">remove</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
