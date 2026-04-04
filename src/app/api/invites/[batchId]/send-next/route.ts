@@ -48,8 +48,22 @@ export async function POST(
   const message = item.editedMessage || item.draftMessage;
 
   try {
-    // Use the LinkedIn slug or profileId as the provider_id for Unipile
-    const providerId = contact.linkedinProfileId || contact.linkedinEntityUrn || contact.linkedinSlug || "";
+    // Get the Unipile provider_id — if we only have a slug, look up the profile first
+    let providerId = contact.linkedinProfileId || contact.linkedinEntityUrn || "";
+
+    if (!providerId && contact.linkedinSlug) {
+      try {
+        const profile = await linkedin.getProfile(contact.linkedinSlug);
+        providerId = profile?.provider_id || profile?.id || "";
+        if (providerId) {
+          await prisma.contact.update({ where: { id: contact.id }, data: { linkedinProfileId: providerId } });
+        }
+      } catch {
+        // Profile lookup failed — try with slug directly
+        providerId = contact.linkedinSlug;
+      }
+    }
+
     if (!providerId) {
       await prisma.inviteBatchItem.update({ where: { id: item.id }, data: { sent: true, sendResult: "no_provider_id" } });
       return NextResponse.json({ item: { ...item, sendResult: "no_provider_id", contact }, done: false });

@@ -203,7 +203,16 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
       for (const item of items) {
         const contact = await prisma.contact.findUnique({ where: { id: item.contactId } });
         if (!contact) continue;
-        const providerId = contact.linkedinProfileId || contact.linkedinEntityUrn || contact.linkedinSlug || "";
+
+        // Get provider_id — look up via Unipile if we only have slug
+        let providerId = contact.linkedinProfileId || contact.linkedinEntityUrn || "";
+        if (!providerId && contact.linkedinSlug) {
+          try {
+            const profile = await linkedin.getProfile(contact.linkedinSlug);
+            providerId = profile?.provider_id || profile?.id || "";
+            if (providerId) await prisma.contact.update({ where: { id: contact.id }, data: { linkedinProfileId: providerId } });
+          } catch { providerId = contact.linkedinSlug; }
+        }
         if (!providerId) { failed++; continue; }
 
         try {

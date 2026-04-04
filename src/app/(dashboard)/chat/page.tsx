@@ -44,10 +44,13 @@ export default function ChatPage() {
   const [history, setHistory] = useState<Array<{ role: string; content: string }>>([]);
   const [stats, setStats] = useState<Stats>({ total: 0, invited: 0, connected: 0, replied: 0, meetings: 0 });
   const [initialized, setInitialized] = useState(false);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [messages, thinkingSteps]);
+  const scrollToBottom = () => {
+    setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+  };
+  useEffect(scrollToBottom, [messages, thinkingSteps, loading]);
 
   const fetchStats = useCallback(async () => {
     try {
@@ -129,7 +132,7 @@ export default function ChatPage() {
       </div>
 
       {/* Messages */}
-      <ScrollArea className="flex-1 px-6" ref={scrollRef}>
+      <div className="flex-1 overflow-y-auto px-6">
         <div className="max-w-3xl mx-auto py-4 space-y-4">
           {messages.length === 0 && !loading && (
             <div className="flex flex-col items-center justify-center py-16 text-center">
@@ -200,8 +203,9 @@ export default function ChatPage() {
               </div>
             </div>
           )}
+          <div ref={bottomRef} />
         </div>
-      </ScrollArea>
+      </div>
 
       {/* Input */}
       <div className="border-t border-border bg-background px-6 py-2.5 shrink-0">

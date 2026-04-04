@@ -1,15 +1,13 @@
 "use client";
 
 import { useSession, signOut } from "next-auth/react";
+import { useTheme } from "next-themes";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { LogOut, Menu, Settings } from "lucide-react";
+import { LogOut, Menu, Settings, Sun, Moon } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Sidebar } from "./sidebar";
 import { useEffect, useState } from "react";
@@ -19,11 +17,15 @@ interface ServiceStatus { linkedin: boolean; apify: boolean; openrouter: boolean
 
 export function TopBar() {
   const { data: session } = useSession();
+  const { theme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
   const [services, setServices] = useState<ServiceStatus>({ linkedin: false, apify: false, openrouter: false });
+
+  useEffect(() => { setMounted(true); }, []);
 
   useEffect(() => {
     fetch("/api/settings").then(r => r.json()).then(data => {
-      setServices({ linkedin: !!data.linkedinLiAt, apify: !!data.apifyApiToken, openrouter: !!data.openrouterApiKey });
+      setServices({ linkedin: !!data.unipileApiKey, apify: !!data.apifyApiToken, openrouter: !!data.openrouterApiKey });
     }).catch(() => {});
   }, []);
 
@@ -35,16 +37,11 @@ export function TopBar() {
     <header className="sticky top-0 z-40 flex h-12 items-center gap-4 border-b border-border bg-background px-4">
       <Sheet>
         <SheetTrigger>
-          <Button variant="ghost" size="icon" className="lg:hidden h-8 w-8">
-            <Menu className="h-4 w-4" />
-          </Button>
+          <Button variant="ghost" size="icon" className="lg:hidden h-8 w-8"><Menu className="h-4 w-4" /></Button>
         </SheetTrigger>
-        <SheetContent side="left" className="p-0 w-[200px]">
-          <Sidebar />
-        </SheetContent>
+        <SheetContent side="left" className="p-0 w-[200px]"><Sidebar /></SheetContent>
       </Sheet>
 
-      {/* Connection status */}
       <div className="flex items-center gap-2">
         <span className={`w-2 h-2 rounded-full ${allConnected ? "bg-success" : connectedCount > 0 ? "bg-warning" : "bg-muted-foreground"}`} />
         <span className="text-xs font-semibold tracking-tight text-primary">
@@ -55,17 +52,21 @@ export function TopBar() {
       <div className="flex-1" />
 
       <div className="flex items-center gap-2">
-        {/* Service dots */}
         <div className="flex items-center gap-1.5 mr-2">
           {(["linkedin", "apify", "openrouter"] as const).map(s => (
             <span key={s} className={`w-1.5 h-1.5 rounded-full ${services[s] ? "bg-success" : "bg-muted-foreground/30"}`} title={s} />
           ))}
         </div>
 
-        <Link href="/settings">
-          <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
-            <Settings className="h-4 w-4" />
+        {/* Theme toggle */}
+        {mounted && (
+          <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>
+            {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
           </Button>
+        )}
+
+        <Link href="/settings">
+          <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground"><Settings className="h-4 w-4" /></Button>
         </Link>
 
         <DropdownMenu>
@@ -77,9 +78,7 @@ export function TopBar() {
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem className="text-xs text-muted-foreground">{session?.user?.email}</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => signOut()}>
-              <LogOut className="mr-2 h-3 w-3" />Sign out
-            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => signOut()}><LogOut className="mr-2 h-3 w-3" />Sign out</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
