@@ -25,7 +25,7 @@ export function getToolDefinitions() {
     { type: "function" as const, function: { name: "search_contacts", description: "Search contacts by name/company/status/fit", parameters: { type: "object", properties: { query: { type: "string" }, status: { type: "string", enum: ["TO_CONTACT","INVITED","CONNECTED","FOLLOWED_UP","REPLIED","MEETING_BOOKED","UNRESPONSIVE"] }, fit: { type: "string", enum: ["HIGH","MEDIUM","LOW"] }, limit: { type: "number" } } } } },
     { type: "function" as const, function: { name: "discover_prospects", description: "EXECUTE: Search LinkedIn for prospects by keyword + location. Assigns to specified campaign.", parameters: { type: "object", properties: { job_title: { type: "string", description: "e.g. CEO, CFO, VP Lending" }, location: { type: "string", description: "e.g. United Kingdom" }, count: { type: "number", description: "max results (default 25)" }, campaign_id: { type: "string", description: "Campaign ID to assign contacts to" } }, required: ["job_title"] } } },
     { type: "function" as const, function: { name: "score_contacts", description: "EXECUTE: Score unscored contacts using LLM (HIGH/MEDIUM/LOW fit)", parameters: { type: "object", properties: { limit: { type: "number", description: "max to score (default 10)" } } } } },
-    { type: "function" as const, function: { name: "prepare_invites", description: "EXECUTE: Generate personalized connection notes via LLM for TO_CONTACT contacts. Returns draft messages for review.", parameters: { type: "object", properties: { count: { type: "number", description: "max invites to prepare (default 10)" } } } } },
+    { type: "function" as const, function: { name: "prepare_invites", description: "EXECUTE: Generate personalized connection notes via LLM for TO_CONTACT contacts. Prioritizes HIGH fit. Returns draft messages for review.", parameters: { type: "object", properties: { count: { type: "number", description: "max invites to prepare (default 10)" }, campaign_id: { type: "string", description: "Campaign ID to filter contacts (recommended)" } } } } },
     { type: "function" as const, function: { name: "send_invites", description: "EXECUTE: Send approved invites via LinkedIn (Unipile). Sends one by one.", parameters: { type: "object", properties: { batch_id: { type: "string", description: "Batch ID to send" } }, required: ["batch_id"] } } },
     { type: "function" as const, function: { name: "check_connections_and_inbox", description: "EXECUTE: Check which invites were accepted + scan inbox for replies", parameters: { type: "object", properties: {} } } },
     { type: "function" as const, function: { name: "send_followups", description: "EXECUTE: Generate and send follow-up messages to connected contacts (3+ days)", parameters: { type: "object", properties: {} } } },
@@ -215,8 +215,20 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
       if (!settings?.openrouterApiKey) return { success: false, message: "OpenRouter not configured." };
       setAgentStatus(userId, "Preparing personalized invite messages via LLM...");
       const maxBatch = (args.count as number) || 10;
-      const contacts = await prisma.contact.findMany({ where: { userId, status: "TO_CONTACT" }, orderBy: [{ profileFit: "asc" }, { createdAt: "asc" }], take: maxBatch });
-      if (contacts.length === 0) return { success: true, message: "No contacts ready for invites." };
+      const prepCampaignId = args.campaign_id as string | undefined;
+
+      // Filter by campaign if provided, prioritize HIGH → MEDIUM → LOW
+      const contactWhere: Record<string, unknown> = { userId, status: "TO_CONTACT" };
+      if (prepCampaignId) contactWhere.campaignId = prepCampaignId;
+
+      const allReady = await prisma.contact.findMany({ where: contactWhere, orderBy: { createdAt: "asc" } });
+
+      // Sort by fit priority: HIGH first, then MEDIUM, then LOW, then unscored
+      const fitOrder: Record<string, number> = { HIGH: 0, MEDIUM: 1, LOW: 2 };
+      allReady.sort((a, b) => (fitOrder[a.profileFit || ""] ?? 3) - (fitOrder[b.profileFit || ""] ?? 3));
+      const contacts = allReady.slice(0, maxBatch);
+
+      if (contacts.length === 0) return { success: true, message: `No contacts ready for invites${prepCampaignId ? " in this campaign" : ""}. Discover and score prospects first.` };
 
       // Load campaign context for each contact's campaign
       const campCache = new Map<string, CampaignContext>();

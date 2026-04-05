@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { Send, Loader2, Bot, User, Sparkles, Users, UserCheck, Inbox, Calendar, Wrench } from "lucide-react";
+import { Send, Loader2, Bot, User, Sparkles, Users, UserCheck, Inbox, Calendar, Wrench, Copy, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface Message { role: "user" | "assistant"; content: string; thinking?: string[] }
@@ -189,17 +189,18 @@ export default function ChatPage({ campaignId }: { campaignId?: string }) {
 
           {messages.map((msg, i) => (
             <div key={i}>
-              <div className={cn("flex gap-2.5", msg.role === "user" ? "justify-end" : "")}>
+              <div className={cn("flex gap-2.5 group", msg.role === "user" ? "justify-end" : "")}>
                 {msg.role === "assistant" && (
                   <div className="w-6 h-6 rounded-md bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
                     <Bot className="h-3.5 w-3.5 text-primary" />
                   </div>
                 )}
-                <div className={cn("max-w-[85%] rounded-lg px-3 py-2 text-[13px] leading-relaxed", msg.role === "user" ? "bg-primary text-primary-foreground" : "bg-card border border-border")}>
+                <div className={cn("max-w-[85%] rounded-lg px-3 py-2 text-[13px] leading-relaxed relative", msg.role === "user" ? "bg-primary text-primary-foreground" : "bg-card border border-border")}>
                   {msg.role === "assistant" ? (
                     <div className="prose prose-sm prose-invert max-w-none [&_p]:my-1 [&_ul]:my-1 [&_li]:my-0 [&_strong]:text-foreground [&_code]:text-[11px] [&_code]:bg-muted [&_code]:px-1 [&_code]:rounded" dangerouslySetInnerHTML={{ __html: fmtMd(msg.content) }} />
                   ) : <span>{msg.content}</span>}
                 </div>
+                <CopyButton text={msg.content} />
                 {msg.role === "user" && (
                   <div className="w-6 h-6 rounded-md bg-muted flex items-center justify-center shrink-0 mt-0.5"><User className="h-3.5 w-3.5 text-muted-foreground" /></div>
                 )}
@@ -266,6 +267,26 @@ export default function ChatPage({ campaignId }: { campaignId?: string }) {
         </div>
       </div>
     </div>
+  );
+}
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch { /* clipboard unavailable */ }
+  };
+  return (
+    <button
+      onClick={handleCopy}
+      className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0 mt-0.5 w-6 h-6 rounded-md hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground"
+      title="Copy to clipboard"
+    >
+      {copied ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+    </button>
   );
 }
 
