@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version increments by +0.1 on every merge to `main`.
 
+## [1.0.1] - 2026-04-05
+
+### Added
+- **Admin Panel** (`/admin`): Exclusive dashboard for federico.ledesma@protofire.io with aggregated user statistics (tokens, contacts by stage, usage time, campaigns, invites, connections, responses)
+- Charts using Recharts (line for tokens, bar for stages, pie for users)
+- Period filters (month/quarter)
+- Access logs for admin panel
+- Serverless compatible with Vercel
+
+### Changed
+- Updated versions to 1.0.1 across package.json, constants, and changelog
+
 ## [1.0.0] - 2026-04-05
 
 ### Security
