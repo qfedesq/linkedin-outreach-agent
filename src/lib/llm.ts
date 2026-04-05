@@ -53,29 +53,17 @@ export async function callLLM(
   return data.choices[0].message.content;
 }
 
-const DEFAULT_ICP = `TIER 1 (HIGH fit): Embedded finance/lending, Revenue-based financing, Merchant cash advances, Invoice/trade/supply chain finance, B2B BNPL
-TIER 2 (MEDIUM fit): SMB lending, Real estate bridge lending, Specialty consumer lending, Equipment financing, Payroll/earned wage access
-TIER 3 (LOW fit): Digital banks with lending arms, Credit card issuers, Insurance-backed credit, Family offices with credit mandates
-
-TARGET ROLES (boost score): CEO, Co-Founder, CFO, Head of Capital Markets, Chief Risk Officer
-SIGNALS OF FIT (boost score): Fast growth, capital-constrained, platform model, crypto-adjacent, recent capital markets hire
-DISQUALIFY (score as LOW regardless): Pure equity VC, 30-year mortgage, traditional bank, pre-Series A <$5M deployed
-
-GEOGRAPHY: UK > Europe > US > APAC (use as tiebreaker only)`;
-
-export function getIcpScoringPrompt(customIcp?: string | null): string {
-  const criteria = customIcp || DEFAULT_ICP;
+export function getIcpScoringPrompt(campaignIcp: string): string {
   return `You are an ICP (Ideal Customer Profile) scoring agent.
 
-SCORING CRITERIA:
-${criteria}
+SCORING CRITERIA (from the active campaign):
+${campaignIcp}
 
 Given the following LinkedIn profile, respond with ONLY a JSON object:
-{"fit": "HIGH" | "MEDIUM" | "LOW", "rationale": "<1 sentence explaining why>"}`;
-}
+{"fit": "HIGH" | "MEDIUM" | "LOW", "rationale": "<1 sentence explaining why>"}
 
-// Keep backward compat
-export const ICP_SCORING_PROMPT = getIcpScoringPrompt();
+IMPORTANT: Score ONLY against the criteria above. Do NOT use any other criteria.`;
+}
 
 export function getConnectionNotePrompt(calendarUrl: string): string {
   return `You are writing LinkedIn connection request notes for Andrei Yurkevich at Protofire/arenas.fi.
