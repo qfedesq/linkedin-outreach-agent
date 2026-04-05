@@ -63,7 +63,7 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
       if (args.fit) where.profileFit = args.fit;
       if (args.query) where.OR = [{ name: { contains: args.query as string } }, { company: { contains: args.query as string } }, { position: { contains: args.query as string } }];
       const contacts = await prisma.contact.findMany({ where, take: (args.limit as number) || 10, orderBy: { createdAt: "desc" } });
-      return { success: true, data: contacts.map(c => ({ name: c.name, position: c.position, company: c.company, fit: c.profileFit, status: c.status, url: c.linkedinUrl })), message: `Found ${contacts.length} contacts` };
+      return { success: true, data: contacts.map(c => ({ name: c.name, position: c.position, company: c.company, fit: c.profileFit, status: c.status, degree: c.connectionDegree, url: c.linkedinUrl })), message: `Found ${contacts.length} contacts` };
     }
 
     case "get_recent_activity": {
@@ -121,13 +121,14 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
 
         setAgentStatus(userId, `Found ${items.length} profiles. Saving...`);
 
-        let created = 0, skipped = 0;
+        let created = 0, skipped = 0, connected1st = 0;
         for (const p of items) {
           const url = (p.public_profile_url || p.profile_url || "").toLowerCase().replace(/\/$/, "").split("?")[0];
           if (!url.includes("linkedin.com/in/")) { skipped++; continue; }
           const slug = p.public_identifier || url.match(/linkedin\.com\/in\/([^/?]+)/i)?.[1] || null;
           const providerId = p.member_urn || p.id || null;
 
+          const degree = p.network_distance || null; // DISTANCE_1, DISTANCE_2, DISTANCE_3
           const result = await createContactSafe(userId, {
             name: p.name || "Unknown",
             position: p.headline || null,
@@ -135,14 +136,17 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
             linkedinUrl: url,
             linkedinSlug: slug,
             linkedinProfileId: providerId,
+            connectionDegree: degree,
             source: "unipile",
           });
-          if (result.created) created++;
-          else skipped++;
+          if (result.created) {
+            created++;
+            if (degree === "DISTANCE_1") connected1st++;
+          } else skipped++;
         }
 
-        await logActivity(userId, "linkedin_search", { level: "success", message: `Found ${items.length}, saved ${created} new (${skipped} skipped)`, success: true });
-        return { success: true, data: { total: items.length, created, skipped }, message: `Found ${items.length} profiles on LinkedIn. Saved ${created} new contacts (${skipped} duplicates skipped).` };
+        await logActivity(userId, "linkedin_search", { level: "success", message: `Found ${items.length}, saved ${created} new (${connected1st} already connected, ${skipped} skipped)`, success: true });
+        return { success: true, data: { total: items.length, created, skipped, connected1st }, message: `Found ${items.length} profiles. Saved ${created} new contacts${connected1st > 0 ? ` (${connected1st} already connected — marked as CONNECTED)` : ""}${skipped > 0 ? ` (${skipped} duplicates skipped)` : ""}.` };
       } catch (e) {
         return { success: false, message: `Search failed: ${(e as Error).message}` };
       }

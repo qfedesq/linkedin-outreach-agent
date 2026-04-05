@@ -67,6 +67,7 @@ model Contact {
   notes              String?
   source             String?
   campaignId         String?
+  connectionDegree   String?   // DISTANCE_1, DISTANCE_2, DISTANCE_3 from LinkedIn
   enrichedAt         DateTime?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt

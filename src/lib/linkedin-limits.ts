@@ -142,6 +142,11 @@ export async function canInviteContact(
   const contact = await prisma.contact.findFirst({ where: { id: contactId, userId } });
   if (!contact) return { allowed: false, reason: "Contact not found" };
 
+  // 1st degree = already connected, no invite needed
+  if (contact.connectionDegree === "DISTANCE_1") {
+    return { allowed: false, reason: "Already connected (1st degree). No invite needed — send a message instead." };
+  }
+
   // Already invited — check cooldown
   if (contact.status === "INVITED") {
     if (contact.inviteSentDate) {

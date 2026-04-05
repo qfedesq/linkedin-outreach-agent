@@ -35,6 +35,7 @@ export async function createContactSafe(
     linkedinUrl: string;
     linkedinSlug?: string | null;
     linkedinProfileId?: string | null;
+    connectionDegree?: string | null;
     source?: string;
     campaignId?: string | null;
   }
@@ -58,6 +59,9 @@ export async function createContactSafe(
   }
 
   try {
+    // Auto-detect status from connection degree
+    const isFirstDegree = data.connectionDegree === "DISTANCE_1";
+
     const contact = await prisma.contact.create({
       data: {
         name: data.name,
@@ -66,8 +70,12 @@ export async function createContactSafe(
         linkedinUrl: normalized,
         linkedinSlug: data.linkedinSlug || null,
         linkedinProfileId: data.linkedinProfileId || null,
+        connectionDegree: data.connectionDegree || null,
         source: data.source || "unipile",
         campaignId: data.campaignId || null,
+        // 1st degree = already connected, no invite needed
+        status: isFirstDegree ? "CONNECTED" : "TO_CONTACT",
+        connectedDate: isFirstDegree ? new Date() : null,
         userId,
       },
     });
