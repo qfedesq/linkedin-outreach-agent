@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
-  Users, ScrollText, Settings, MessageSquare, TrendingUp, Plus, Megaphone,
+  Users, ScrollText, Settings, MessageSquare, TrendingUp, Plus, Megaphone, BookOpen,
 } from "lucide-react";
 import { APP_VERSION } from "@/lib/constants";
 import { useEffect, useState } from "react";
@@ -18,6 +18,7 @@ const navItems = [
 ];
 
 const bottomItems = [
+  { href: "/guide", label: "How to Use", icon: BookOpen },
   { href: "/logs", label: "Logs", icon: ScrollText },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
