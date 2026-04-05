@@ -59,6 +59,7 @@ export async function POST(request: Request) {
 
         let finalResponse = "";
         let iterations = 0;
+        let hasError = false;
 
         while (iterations < 8) {
           iterations++;
@@ -91,6 +92,7 @@ export async function POST(request: Request) {
 
             send("thinking", `Error: LLM returned ${response.status}`);
             send("content", `⚠️ LLM error (${response.status}): ${errText.substring(0, 150)}\n\nThis usually means the OpenRouter API key needs credits or the model is unavailable. Check Settings > OpenRouter.`);
+            hasError = true;
             break;
           }
 
@@ -108,8 +110,8 @@ export async function POST(request: Request) {
 
           const msg = data.choices?.[0]?.message;
           if (!msg) {
-            send("error", "Empty response from LLM");
-            send("content", "The LLM returned an empty response. Please try again.");
+            send("content", "⚠️ The LLM returned an empty response. Please try again.");
+            hasError = true;
             break;
           }
 
@@ -145,12 +147,11 @@ export async function POST(request: Request) {
 
           await prisma.chatMessage.create({ data: { userId: user.id, role: "assistant", content: finalResponse, campaignId } });
           await logActivity(user.id, "agent_chat", { level: "success", message: `Agent: ${finalResponse.substring(0, 80)}...` });
-        } else {
-          // No final response — either max iterations or empty
+        } else if (!hasError) {
+          // No final response and no error was sent — show fallback
           const msg = iterations >= 8
-            ? "I ran out of thinking steps before completing the task. The actions above were executed — check the results in Contacts or Logs. For complex tasks, try breaking them into smaller steps."
+            ? "I ran out of thinking steps. Check results in Contacts or Logs. Try smaller steps."
             : "I wasn't able to generate a response. Please try again.";
-          send("clear", "");
           send("content", msg);
           await prisma.chatMessage.create({ data: { userId: user.id, role: "assistant", content: msg, campaignId } });
         }
