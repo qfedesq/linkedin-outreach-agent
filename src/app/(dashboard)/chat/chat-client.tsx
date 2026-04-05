@@ -121,6 +121,7 @@ export default function ChatPage({ campaignId }: { campaignId?: string }) {
                 break;
               case "error":
                 toast.error(data);
+                if (!fullContent) fullContent = "⚠️ " + data;
                 break;
               case "done":
                 break;

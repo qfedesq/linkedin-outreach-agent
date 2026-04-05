@@ -73,8 +73,24 @@ export async function POST(request: Request) {
 
           if (!response.ok) {
             const errText = await response.text().catch(() => "");
-            send("error", `LLM error ${response.status}: ${errText.substring(0, 100)}`);
-            send("content", `Error connecting to LLM (${response.status}). Please try again.`);
+
+            // If 401 with tools, retry without tools (some keys have tool restrictions)
+            if (response.status === 401 && iterations === 1) {
+              send("thinking", "Retrying without tools...");
+              const retryRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+                method: "POST",
+                headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+                body: JSON.stringify({ model, messages, max_tokens: 2000, temperature: 0.7 }),
+              });
+              if (retryRes.ok) {
+                const retryData = await retryRes.json();
+                finalResponse = retryData.choices?.[0]?.message?.content || "";
+                if (finalResponse) break;
+              }
+            }
+
+            send("thinking", `Error: LLM returned ${response.status}`);
+            send("content", `⚠️ LLM error (${response.status}): ${errText.substring(0, 150)}\n\nThis usually means the OpenRouter API key needs credits or the model is unavailable. Check Settings > OpenRouter.`);
             break;
           }
 
