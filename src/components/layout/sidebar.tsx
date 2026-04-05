@@ -26,7 +26,7 @@ export function Sidebar() {
   const pathname = usePathname();
   const [inviteCount, setInviteCount] = useState({ sent: 0, max: 20 });
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
-  const [usage, setUsage] = useState({ totalTokens: 0, totalCost: 0, calls: 0, todayLLMCalls: 0, totalLLMCalls: 0 });
+  const [usage, setUsage] = useState({ totalTokens: 0, totalCost: 0, todayTokens: 0, todayCost: 0, todayLLMCalls: 0, totalLLMCalls: 0 });
 
   useEffect(() => {
     fetch("/api/contacts?status=INVITED&limit=1")
@@ -119,12 +119,20 @@ export function Sidebar() {
           <p className="text-[10px] text-muted-foreground uppercase tracking-widest mb-1 font-bold">OpenRouter</p>
           <div className="space-y-1">
             <div className="flex justify-between text-[10px]">
-              <span className="text-muted-foreground">Tokens</span>
-              <span className="font-mono text-foreground">{usage.totalTokens > 0 ? `${(usage.totalTokens / 1000).toFixed(1)}k` : "—"}</span>
+              <span className="text-muted-foreground">Tokens today</span>
+              <span className="font-mono text-foreground">{usage.todayTokens > 0 ? `${(usage.todayTokens / 1000).toFixed(1)}k` : "0"}</span>
             </div>
             <div className="flex justify-between text-[10px]">
-              <span className="text-muted-foreground">Cost</span>
-              <span className="font-mono text-foreground">{usage.totalCost > 0 ? `$${usage.totalCost.toFixed(4)}` : "—"}</span>
+              <span className="text-muted-foreground">Cost today</span>
+              <span className="font-mono text-foreground">{usage.todayCost > 0 ? `$${usage.todayCost.toFixed(4)}` : "$0"}</span>
+            </div>
+            <div className="flex justify-between text-[10px]">
+              <span className="text-muted-foreground">Total tokens</span>
+              <span className="font-mono text-foreground">{usage.totalTokens > 0 ? `${(usage.totalTokens / 1000).toFixed(1)}k` : "0"}</span>
+            </div>
+            <div className="flex justify-between text-[10px]">
+              <span className="text-muted-foreground">Total cost</span>
+              <span className="font-mono text-foreground">{usage.totalCost > 0 ? `$${usage.totalCost.toFixed(4)}` : "$0"}</span>
             </div>
             <div className="flex justify-between text-[10px]">
               <span className="text-muted-foreground">Calls today</span>

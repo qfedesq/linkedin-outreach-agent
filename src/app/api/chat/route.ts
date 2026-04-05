@@ -95,6 +95,17 @@ export async function POST(request: Request) {
           }
 
           const data = await response.json();
+
+          // Log token usage from chat LLM call
+          if (data.usage) {
+            const pt = data.usage.prompt_tokens || 0;
+            const ct = data.usage.completion_tokens || 0;
+            const cost = (pt * 0.003 + ct * 0.015) / 1000;
+            await prisma.executionLog.create({
+              data: { action: "llm_usage", request: `${model} | ${pt + ct} tokens`, response: JSON.stringify({ prompt_tokens: pt, completion_tokens: ct, total: pt + ct, cost }), success: true, duration: pt + ct, userId: user.id },
+            }).catch(() => {});
+          }
+
           const msg = data.choices?.[0]?.message;
           if (!msg) {
             send("error", "Empty response from LLM");
@@ -134,8 +145,14 @@ export async function POST(request: Request) {
 
           await prisma.chatMessage.create({ data: { userId: user.id, role: "assistant", content: finalResponse, campaignId } });
           await logActivity(user.id, "agent_chat", { level: "success", message: `Agent: ${finalResponse.substring(0, 80)}...` });
-        } else if (iterations >= 8) {
-          send("content", "I reached the maximum number of steps. Please try a simpler request.");
+        } else {
+          // No final response — either max iterations or empty
+          const msg = iterations >= 8
+            ? "I ran out of thinking steps before completing the task. The actions above were executed — check the results in Contacts or Logs. For complex tasks, try breaking them into smaller steps."
+            : "I wasn't able to generate a response. Please try again.";
+          send("clear", "");
+          send("content", msg);
+          await prisma.chatMessage.create({ data: { userId: user.id, role: "assistant", content: msg, campaignId } });
         }
 
         send("done", "");

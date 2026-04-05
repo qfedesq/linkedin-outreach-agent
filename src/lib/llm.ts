@@ -1,8 +1,5 @@
 import { decrypt } from "@/lib/encryption";
-
-// In-memory usage tracker
-let sessionUsage = { totalTokens: 0, totalCost: 0, calls: 0 };
-export function getSessionUsage() { return { ...sessionUsage }; }
+import { prisma } from "@/lib/prisma";
 
 interface LLMOptions {
   temperature?: number;
@@ -41,13 +38,26 @@ export async function callLLM(
   }
   const data = await response.json();
 
-  // Track token usage
-  if (data.usage) {
-    const pt = data.usage.prompt_tokens || 0;
-    const ct = data.usage.completion_tokens || 0;
-    sessionUsage.totalTokens += pt + ct;
-    sessionUsage.totalCost += (pt * 0.003 + ct * 0.015) / 1000;
-    sessionUsage.calls++;
+  // Return usage info for caller to persist
+  const usageInfo = data.usage ? {
+    prompt_tokens: data.usage.prompt_tokens || 0,
+    completion_tokens: data.usage.completion_tokens || 0,
+    total: (data.usage.prompt_tokens || 0) + (data.usage.completion_tokens || 0),
+    cost: ((data.usage.prompt_tokens || 0) * 0.003 + (data.usage.completion_tokens || 0) * 0.015) / 1000,
+  } : null;
+
+  // Store in global for the usage API to read (best effort)
+  if (usageInfo) {
+    prisma.executionLog.create({
+      data: {
+        action: "llm_usage",
+        request: `${model} | ${usageInfo.total} tokens`,
+        response: JSON.stringify(usageInfo),
+        success: true,
+        duration: usageInfo.total,
+        userId: "global", // Will be attributed via the calling context
+      },
+    }).catch(() => {});
   }
 
   return data.choices[0].message.content;
