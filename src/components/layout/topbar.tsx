@@ -13,24 +13,24 @@ import { Sidebar } from "./sidebar";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 
-interface ServiceStatus { linkedin: boolean; apify: boolean; openrouter: boolean }
+interface ServiceStatus { linkedin: boolean; openrouter: boolean }
 
 export function TopBar() {
   const { data: session } = useSession();
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
-  const [services, setServices] = useState<ServiceStatus>({ linkedin: false, apify: false, openrouter: false });
+  const [services, setServices] = useState<ServiceStatus>({ linkedin: false, openrouter: false });
 
   useEffect(() => { setMounted(true); }, []);
 
   useEffect(() => {
     fetch("/api/settings").then(r => r.json()).then(data => {
-      setServices({ linkedin: !!data.unipileApiKey, apify: !!data.apifyApiToken, openrouter: !!data.openrouterApiKey });
+      setServices({ linkedin: !!data.unipileApiKey, openrouter: !!data.openrouterApiKey });
     }).catch(() => {});
   }, []);
 
   const connectedCount = Object.values(services).filter(Boolean).length;
-  const allConnected = connectedCount === 3;
+  const allConnected = connectedCount === 2;
   const userName = session?.user?.name?.split(" ")[0] || "User";
 
   return (
@@ -45,7 +45,7 @@ export function TopBar() {
       <div className="flex items-center gap-2">
         <span className={`w-2 h-2 rounded-full ${allConnected ? "bg-success" : connectedCount > 0 ? "bg-warning" : "bg-muted-foreground"}`} />
         <span className="text-xs font-semibold tracking-tight text-primary">
-          {allConnected ? `Connected as ${userName}` : `${connectedCount}/3 services`}
+          {allConnected ? `Connected as ${userName}` : `${connectedCount}/2 services`}
         </span>
       </div>
 
@@ -53,7 +53,7 @@ export function TopBar() {
 
       <div className="flex items-center gap-2">
         <div className="flex items-center gap-1.5 mr-2">
-          {(["linkedin", "apify", "openrouter"] as const).map(s => (
+          {(["linkedin", "openrouter"] as const).map(s => (
             <span key={s} className={`w-1.5 h-1.5 rounded-full ${services[s] ? "bg-success" : "bg-muted-foreground/30"}`} title={s} />
           ))}
         </div>

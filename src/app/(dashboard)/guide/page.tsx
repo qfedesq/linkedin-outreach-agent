@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   Settings, MessageSquare, Users, Search, Send, TrendingUp,
   CheckCircle, ChevronDown, ChevronRight, Zap, Shield, Brain,
-  Target, Megaphone, BarChart3, Clock, ArrowRight,
+  Target, Megaphone, BarChart3, Clock, ArrowRight, ExternalLink,
 } from "lucide-react";
 
 interface StepProps {
@@ -109,24 +109,61 @@ export default function GuidePage() {
           icon={<Settings className="w-4 h-4 text-muted-foreground" />}
           defaultOpen={true}
         >
-          <div className="space-y-3 text-xs text-foreground/80">
-            <p>Go to <strong>Settings</strong> (bottom left) and configure:</p>
-            <ol className="list-decimal list-inside space-y-2 ml-1">
-              <li>
-                <strong>LinkedIn Connection (Unipile)</strong> &mdash; Your Unipile API key, DSN server URL,
-                and Account ID. This gives the agent a persistent LinkedIn session.
-                Click <em>Test Connection</em> to verify.
-              </li>
-              <li>
-                <strong>OpenRouter</strong> &mdash; Your OpenRouter API key for the LLM that writes
-                personalized messages and scores prospects. Make sure it has credits.
-                Select your preferred model (Claude Sonnet recommended).
-              </li>
-              <li>
-                <strong>Agent Autonomy Level</strong> &mdash; Start with <em>Training</em> (asks before sending).
-                Move to <em>Semi-auto</em> or <em>Full auto</em> as you gain confidence.
-              </li>
-            </ol>
+          <div className="space-y-4 text-xs text-foreground/80">
+            <p>Go to <strong>Settings</strong> (bottom left) and configure each service:</p>
+
+            <ProviderBlock
+              name="LinkedIn Connection (Unipile)"
+              description="Gives the agent a persistent LinkedIn session. You need 3 values: API Key, DSN (server URL), and Account ID."
+              links={[
+                { label: "Sign up at Unipile", url: "https://www.unipile.com/" },
+                { label: "Unipile Dashboard (get API key & DSN)", url: "https://dashboard.unipile.com/" },
+                { label: "Unipile Docs", url: "https://docs.unipile.com/" },
+              ]}
+              steps={[
+                "Create an account at unipile.com",
+                "Connect your LinkedIn account via the Unipile dashboard",
+                "Copy your API Key, DSN (Server URL), and Account ID",
+                "Paste all 3 values in Settings, then click Test Connection",
+              ]}
+            />
+
+            <ProviderBlock
+              name="OpenRouter (LLM)"
+              description="Powers message personalization, ICP scoring, and the chat agent. Needs credits to work."
+              links={[
+                { label: "Sign up at OpenRouter", url: "https://openrouter.ai/" },
+                { label: "Get API Key", url: "https://openrouter.ai/keys" },
+                { label: "Add Credits", url: "https://openrouter.ai/credits" },
+              ]}
+              steps={[
+                "Create an account at openrouter.ai",
+                "Go to Keys and create a new API key",
+                "Add credits (minimum $5 recommended to start)",
+                "Paste the API key in Settings and select a model (Claude Sonnet recommended)",
+              ]}
+            />
+
+            <ProviderBlock
+              name="Calendar Booking URL"
+              description="Used in follow-up messages to let prospects book meetings with you. Configured per campaign."
+              links={[
+                { label: "Google Calendar Appointment Scheduling", url: "https://calendar.google.com/calendar/appointments" },
+                { label: "Calendly", url: "https://calendly.com/" },
+                { label: "Cal.com", url: "https://cal.com/" },
+              ]}
+              steps={[
+                "Create a booking page on your preferred calendar tool",
+                "Copy the public booking link",
+                "Paste it in each campaign's settings (gear icon in sidebar)",
+              ]}
+            />
+
+            <div className="mt-2">
+              <p><strong>Agent Autonomy Level</strong> &mdash; Start with <em>Training</em> (asks before sending).
+              Move to <em>Semi-auto</em> or <em>Full auto</em> as you gain confidence.</p>
+            </div>
+
             <Tip>
               Use the eye icon to reveal/hide API keys. Click &ldquo;Test Connection&rdquo; for each service
               before saving to make sure everything works.
@@ -366,6 +403,37 @@ export default function GuidePage() {
           </div>
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+function ProviderBlock({ name, description, links, steps }: {
+  name: string;
+  description: string;
+  links: Array<{ label: string; url: string }>;
+  steps: string[];
+}) {
+  return (
+    <div className="border border-border rounded-lg p-3 space-y-2">
+      <p className="font-semibold text-foreground">{name}</p>
+      <p className="text-muted-foreground">{description}</p>
+      <div className="flex flex-wrap gap-2 mt-1">
+        {links.map(link => (
+          <a
+            key={link.url}
+            href={link.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-primary hover:underline text-[11px] font-medium"
+          >
+            <ExternalLink className="w-3 h-3" />
+            {link.label}
+          </a>
+        ))}
+      </div>
+      <ol className="list-decimal list-inside space-y-1 mt-2 text-muted-foreground">
+        {steps.map((step, i) => <li key={i}>{step}</li>)}
+      </ol>
     </div>
   );
 }

@@ -13,7 +13,6 @@ import { Eye, EyeOff, CheckCircle, XCircle, Loader2 } from "lucide-react";
 interface Settings {
   unipileApiKey: string;
   unipileAccountId: string;
-  apifyApiToken: string;
   openrouterApiKey: string;
   preferredModel: string;
   calendarBookingUrl: string;
@@ -29,7 +28,7 @@ interface Settings {
 export default function SettingsPage() {
   const [settings, setSettings] = useState<Settings>({
     unipileApiKey: "", unipileAccountId: "",
-    apifyApiToken: "", openrouterApiKey: "",
+    openrouterApiKey: "",
     preferredModel: "anthropic/claude-sonnet-4",
     calendarBookingUrl: "https://calendar.app.google/k8XEhkPnX6sc2GdW9",
     campaignName: "",
@@ -88,7 +87,6 @@ export default function SettingsPage() {
           ...prev,
           ...(data.openrouterApiKey && data.openrouterApiKey !== "••••••••" ? { openrouterApiKey: data.openrouterApiKey } : {}),
           ...(data.unipileApiKey && data.unipileApiKey !== "••••••••" ? { unipileApiKey: data.unipileApiKey } : {}),
-          ...(data.apifyApiToken && data.apifyApiToken !== "••••••••" ? { apifyApiToken: data.apifyApiToken } : {}),
         }));
       } catch {}
     }
@@ -147,20 +145,6 @@ export default function SettingsPage() {
               {testing.linkedin && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Test Connection
             </Button>
             <TestResult id="linkedin" />
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Apify */}
-      <Card>
-        <CardHeader><CardTitle>Apify</CardTitle><CardDescription>Prospect discovery via LinkedIn scraping</CardDescription></CardHeader>
-        <CardContent className="space-y-4">
-          <SecretInput id="apifyApiToken" label="API Token" value={settings.apifyApiToken || ""} onChange={v => setSettings(p => ({ ...p, apifyApiToken: v }))} />
-          <div className="flex items-center gap-4">
-            <Button onClick={() => testService("apify", "/api/settings/test-apify")} disabled={testing.apify} size="sm">
-              {testing.apify && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Test Connection
-            </Button>
-            <TestResult id="apify" />
           </div>
         </CardContent>
       </Card>

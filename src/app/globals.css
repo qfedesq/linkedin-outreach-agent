@@ -123,5 +123,6 @@
   }
   html {
     @apply font-sans antialiased;
+    font-size: 125%;
   }
 }
