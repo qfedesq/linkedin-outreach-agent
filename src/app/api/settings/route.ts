@@ -112,7 +112,7 @@ export async function PUT(request: Request) {
     data.unipileApiKey = body.unipileApiKey ? encrypt(body.unipileApiKey) : null;
   }
   if (body.unipileAccountId !== undefined) data.unipileAccountId = body.unipileAccountId || null;
-  if (body.unipileDsn !== undefined) data.unipileDsn = body.unipileDsn || "https://api17.unipile.com:14777";
+  if (body.unipileDsn !== undefined) data.unipileDsn = body.unipileDsn || null;
 
   await prisma.userSettings.upsert({
     where: { userId: user.id },

@@ -270,10 +270,12 @@ export async function checkSystemHealth(userId: string): Promise<{
   // 2. Check Unipile / LinkedIn
   if (!s.unipileApiKey) {
     checks.push({ service: "LinkedIn (Unipile)", status: "error", message: "API key not set. Go to Settings → LinkedIn Connection." });
+  } else if (!(s as unknown as Record<string, string>).unipileDsn) {
+    checks.push({ service: "LinkedIn (Unipile)", status: "error", message: "DSN (Server URL) not set. Go to Settings → LinkedIn Connection." });
   } else {
     try {
       const key = decrypt(s.unipileApiKey);
-      const dsn = (s as unknown as Record<string, string>).unipileDsn || "https://api17.unipile.com:14777";
+      const dsn = (s as unknown as Record<string, string>).unipileDsn;
       const res = await fetch(`${dsn}/api/v1/accounts`, {
         headers: { "X-API-KEY": key, Accept: "application/json" },
         signal: AbortSignal.timeout(8000),

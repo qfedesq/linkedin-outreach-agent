@@ -8,7 +8,7 @@ export async function POST(request: Request) {
   if (!user) return unauthorized();
 
   const body = await request.json();
-  const dsn = body.dsn || (user.settings?.unipileApiKey ? "https://api17.unipile.com:14777" : "");
+  const dsn = body.dsn || (user.settings as Record<string, unknown>)?.unipileDsn || "";
   let apiKey = body.apiKey;
 
   if (!apiKey && user.settings?.unipileApiKey) {

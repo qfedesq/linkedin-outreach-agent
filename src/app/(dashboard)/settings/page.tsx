@@ -134,7 +134,7 @@ export default function SettingsPage() {
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>DSN (Server URL)</Label>
-              <Input value={(settings as unknown as Record<string, string>).unipileDsn || "https://api17.unipile.com:14777"} onChange={e => setSettings(p => ({ ...p, unipileDsn: e.target.value } as Settings))} placeholder="https://api17.unipile.com:14777" />
+              <Input value={(settings as unknown as Record<string, string>).unipileDsn || ""} onChange={e => setSettings(p => ({ ...p, unipileDsn: e.target.value } as Settings))} placeholder="e.g., https://api4.unipile.com:13441" />
             </div>
             <div className="space-y-2">
               <Label>Account ID</Label>
