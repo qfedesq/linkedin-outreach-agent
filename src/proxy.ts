@@ -3,10 +3,6 @@ import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 
 export async function proxy(request: NextRequest) {
-  // TODO: Remove DEV_BYPASS before production
-  if (process.env.DEV_BYPASS_AUTH === "true") {
-    return NextResponse.next();
-  }
 
   const { pathname } = request.nextUrl;
 
