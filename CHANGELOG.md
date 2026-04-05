@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version increments by +0.1 on every merge to `main`.
 
+## [1.0.0] - 2026-04-05
+
+### Security
+- Removed legacy LinkedIn Voyager code (src/lib/linkedin/)
+- Eliminated DEV_BYPASS_AUTH for production stability
+- Strengthened authentication and credential handling
+- Updated version to 1.0.0 for stable release
+
+### Changed
+- Migrated LinkedIn integration to Unipile only
+- Improved rate limiter and self-heal robustness
+
 ## [Unreleased]
 
 ## [0.7.0] - 2026-04-03
