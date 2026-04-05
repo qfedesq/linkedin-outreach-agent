@@ -101,9 +101,14 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
       const linkedin = settings ? createLinkedIn(settings) : null;
       if (!linkedin) return { success: false, message: "Unipile not configured. Go to Settings." };
 
-      // Rate limit check
+      // Rate limit check — auto-wait if too fast
       const searchCheck = await canPerformAction(userId, "search");
-      if (!searchCheck.allowed) return { success: false, message: `Search blocked: ${searchCheck.reason}` };
+      if (!searchCheck.allowed && searchCheck.waitMs && searchCheck.waitMs < 30000) {
+        setAgentStatus(userId, `Waiting ${Math.ceil(searchCheck.waitMs / 1000)}s before searching...`);
+        await new Promise(r => setTimeout(r, searchCheck.waitMs + 2000));
+      } else if (!searchCheck.allowed) {
+        return { success: false, message: `Search blocked: ${searchCheck.reason}` };
+      }
 
       const keywords = (args.job_title as string) || "CEO fintech";
       const location = (args.location as string) || undefined;

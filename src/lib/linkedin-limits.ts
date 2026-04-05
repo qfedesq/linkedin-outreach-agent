@@ -29,7 +29,7 @@ const SAFE_LIMITS = {
   SEARCHES_PER_DAY: 20,        // Actual: ~30
   MIN_DELAY_BETWEEN_INVITES_MS: 45000,  // 45 seconds minimum
   MIN_DELAY_BETWEEN_MESSAGES_MS: 30000, // 30 seconds minimum
-  MIN_DELAY_BETWEEN_SEARCHES_MS: 10000, // 10 seconds minimum
+  MIN_DELAY_BETWEEN_SEARCHES_MS: 20000, // 20 seconds minimum
   COOLDOWN_AFTER_ERROR_MS: 300000,      // 5 minutes after any LinkedIn error
   COOLDOWN_AFTER_429_MS: 3600000,       // 1 hour after rate limit hit
   REINVITE_COOLDOWN_DAYS: 30,           // Wait 30 days before re-inviting same person
