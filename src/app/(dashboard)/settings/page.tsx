@@ -71,7 +71,28 @@ export default function SettingsPage() {
     finally { setTesting(p => ({ ...p, [id]: false })); }
   };
 
-  const toggle = (k: string) => setShowSecrets(p => ({ ...p, [k]: !p[k] }));
+  const [revealedOnce, setRevealedOnce] = useState(false);
+
+  const toggle = async (k: string) => {
+    const newState = !showSecrets[k];
+    setShowSecrets(p => ({ ...p, [k]: newState }));
+
+    // Fetch real values from server when revealing for the first time
+    if (newState && !revealedOnce) {
+      setRevealedOnce(true);
+      try {
+        const res = await fetch("/api/settings?reveal=true");
+        const data = await res.json();
+        // Only update secret fields with their revealed values
+        setSettings(prev => ({
+          ...prev,
+          ...(data.openrouterApiKey && data.openrouterApiKey !== "••••••••" ? { openrouterApiKey: data.openrouterApiKey } : {}),
+          ...(data.unipileApiKey && data.unipileApiKey !== "••••••••" ? { unipileApiKey: data.unipileApiKey } : {}),
+          ...(data.apifyApiToken && data.apifyApiToken !== "••••••••" ? { apifyApiToken: data.apifyApiToken } : {}),
+        }));
+      } catch {}
+    }
+  };
 
   const SecretInput = ({ id, label, value, onChange }: { id: string; label: string; value: string; onChange: (v: string) => void }) => (
     <div className="space-y-2">
