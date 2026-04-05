@@ -105,7 +105,7 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
       const searchCheck = await canPerformAction(userId, "search");
       if (!searchCheck.allowed && searchCheck.waitMs && searchCheck.waitMs < 30000) {
         setAgentStatus(userId, `Waiting ${Math.ceil(searchCheck.waitMs / 1000)}s before searching...`);
-        await new Promise(r => setTimeout(r, searchCheck.waitMs + 2000));
+        await new Promise(r => setTimeout(r, (searchCheck.waitMs || 20000) + 2000));
       } else if (!searchCheck.allowed) {
         return { success: false, message: `Search blocked: ${searchCheck.reason}` };
       }
