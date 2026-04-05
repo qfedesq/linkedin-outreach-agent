@@ -164,11 +164,27 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
       if (contacts.length === 0) return { success: true, message: "All contacts are already scored." };
 
       // Build a cache of campaign ICP definitions
-      const campaignIcpCache = new Map<string, string>();
+      const campaignIcpCache = new Map<string, string | null>();
       const campaignIds = [...new Set(contacts.map(c => c.campaignId).filter(Boolean))];
       for (const cid of campaignIds) {
         const camp = await prisma.campaign.findFirst({ where: { id: cid!, userId } });
-        if (camp?.icpDefinition) campaignIcpCache.set(cid!, camp.icpDefinition);
+        campaignIcpCache.set(cid!, camp?.icpDefinition || null);
+      }
+
+      // Check if any contacts lack campaign or ICP
+      const noCampaign = contacts.filter(c => !c.campaignId);
+      if (noCampaign.length > 0) {
+        return { success: false, message: `${noCampaign.length} contacts have no campaign assigned. Assign them to a campaign first, then score. Each campaign needs its own ICP definition.` };
+      }
+
+      const noIcp = campaignIds.filter(cid => !campaignIcpCache.get(cid!));
+      if (noIcp.length > 0) {
+        const campNames = [];
+        for (const cid of noIcp) {
+          const camp = await prisma.campaign.findFirst({ where: { id: cid!, userId } });
+          campNames.push(camp?.name || cid);
+        }
+        return { success: false, message: `Campaign(s) "${campNames.join('", "')}" have no ICP defined. Go to campaign settings (click the gear icon in sidebar) and define the ICP criteria first. I can also help — tell me "set ICP for [campaign name]" and describe your ideal customer.` };
       }
 
       const results = [];
@@ -176,9 +192,9 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
         const text = [`Name: ${c.name}`, c.position && `Position: ${c.position}`, c.company && `Company: ${c.company}`].filter(Boolean).join("\n");
         try {
           setAgentStatus(userId, `Scoring ${c.name}...`);
-          // Use campaign-specific ICP if contact belongs to a campaign, otherwise global
           const campaignIcp = c.campaignId ? campaignIcpCache.get(c.campaignId) : null;
-          const icpPrompt = getIcpScoringPrompt(campaignIcp || settings.icpDefinition);
+          if (!campaignIcp) continue; // Skip — already validated above but safety check
+          const icpPrompt = getIcpScoringPrompt(campaignIcp);
           const resp = await callLLM(icpPrompt, text, settings.openrouterApiKey, settings.preferredModel);
           const parsed = JSON.parse(resp.trim());
           await prisma.contact.update({ where: { id: c.id }, data: { profileFit: parsed.fit || "MEDIUM", fitRationale: parsed.rationale || null } });

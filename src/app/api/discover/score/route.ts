@@ -24,14 +24,19 @@ export async function POST(request: Request) {
     const contact = await prisma.contact.findFirst({ where: { id, userId: user.id } });
     if (!contact) continue;
 
-    // Get campaign-specific ICP if contact belongs to a campaign
-    let icpDef = user.settings.icpDefinition;
-    if (contact.campaignId) {
-      if (!campaignIcpCache.has(contact.campaignId)) {
-        const camp = await prisma.campaign.findFirst({ where: { id: contact.campaignId, userId: user.id } });
-        if (camp?.icpDefinition) campaignIcpCache.set(contact.campaignId, camp.icpDefinition);
-      }
-      icpDef = campaignIcpCache.get(contact.campaignId) || icpDef;
+    // Require campaign-specific ICP — no global fallback
+    if (!contact.campaignId) {
+      results.push({ id, error: "No campaign assigned" });
+      continue;
+    }
+    if (!campaignIcpCache.has(contact.campaignId)) {
+      const camp = await prisma.campaign.findFirst({ where: { id: contact.campaignId, userId: user.id } });
+      campaignIcpCache.set(contact.campaignId, camp?.icpDefinition || "");
+    }
+    const icpDef = campaignIcpCache.get(contact.campaignId);
+    if (!icpDef) {
+      results.push({ id, error: "Campaign has no ICP defined" });
+      continue;
     }
 
     const icpPrompt = getIcpScoringPrompt(icpDef);
