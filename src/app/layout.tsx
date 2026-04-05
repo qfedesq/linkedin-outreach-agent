@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "LinkedIn Outreach Agent",
-  description: "Autonomous LinkedIn B2B outreach for arenas.fi Sky Protocol",
+  description: "Autonomous LinkedIn B2B outreach agent",
 };
 
 export default function RootLayout({

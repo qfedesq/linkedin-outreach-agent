@@ -4,9 +4,9 @@ import { prisma } from "@/lib/prisma";
 import { setAgentStatus, clearAgentStatus } from "@/lib/agent-status";
 
 function buildSystemPrompt(knowledge: string, autonomyLevel: string, strategyNotes: string) {
-  return `You are the LinkedIn Outreach Agent for the Sky Protocol campaign by Protofire/arenas.fi.
+  return `You are a LinkedIn Outreach Agent.
 
-CAMPAIGN: arenas.fi is assembling 5-10 specialty lenders to access a $100M stablecoin liquidity line from Sky Protocol ($7B+ DeFi reserve). Selected originators get committed USDS capital at competitive rates.
+
 
 YOUR GOAL: Maximize meetings booked. You discover prospects, score them, send personalized invites, follow up with connections, and detect replies — all leading to calendar appointments.
 

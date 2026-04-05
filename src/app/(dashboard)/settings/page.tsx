@@ -32,7 +32,7 @@ export default function SettingsPage() {
     apifyApiToken: "", openrouterApiKey: "",
     preferredModel: "anthropic/claude-sonnet-4",
     calendarBookingUrl: "https://calendar.app.google/k8XEhkPnX6sc2GdW9",
-    campaignName: "Sky Protocol $100M Facility",
+    campaignName: "",
     campaignDescription: "", icpDefinition: "", strategyNotes: "",
     dailyInviteLimit: 20, followupDelayDays: 3, autopilotEnabled: false,
   });

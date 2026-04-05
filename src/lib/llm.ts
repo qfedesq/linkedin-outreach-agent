@@ -38,30 +38,24 @@ export async function callLLM(
   }
   const data = await response.json();
 
-  // Return usage info for caller to persist
-  const usageInfo = data.usage ? {
-    prompt_tokens: data.usage.prompt_tokens || 0,
-    completion_tokens: data.usage.completion_tokens || 0,
-    total: (data.usage.prompt_tokens || 0) + (data.usage.completion_tokens || 0),
-    cost: ((data.usage.prompt_tokens || 0) * 0.003 + (data.usage.completion_tokens || 0) * 0.015) / 1000,
-  } : null;
-
-  // Store in global for the usage API to read (best effort)
-  if (usageInfo) {
+  if (data.usage) {
+    const pt = data.usage.prompt_tokens || 0;
+    const ct = data.usage.completion_tokens || 0;
+    const cost = (pt * 0.003 + ct * 0.015) / 1000;
     prisma.executionLog.create({
       data: {
         action: "llm_usage",
-        request: `${model} | ${usageInfo.total} tokens`,
-        response: JSON.stringify(usageInfo),
-        success: true,
-        duration: usageInfo.total,
-        userId: "global", // Will be attributed via the calling context
+        request: `${model} | ${pt + ct} tokens`,
+        response: JSON.stringify({ prompt_tokens: pt, completion_tokens: ct, total: pt + ct, cost }),
+        success: true, duration: pt + ct, userId: "global",
       },
     }).catch(() => {});
   }
 
   return data.choices[0].message.content;
 }
+
+// ===== ALL PROMPTS ARE CAMPAIGN-DRIVEN — ZERO HARDCODED CAMPAIGN TEXT =====
 
 export function getIcpScoringPrompt(campaignIcp: string): string {
   return `You are an ICP (Ideal Customer Profile) scoring agent.
@@ -75,36 +69,58 @@ Given the following LinkedIn profile, respond with ONLY a JSON object:
 IMPORTANT: Score ONLY against the criteria above. Do NOT use any other criteria.`;
 }
 
-export function getConnectionNotePrompt(calendarUrl: string): string {
-  return `You are writing LinkedIn connection request notes for Andrei Yurkevich at Protofire/arenas.fi.
+export interface CampaignContext {
+  userName?: string;
+  campaignName: string;
+  campaignDescription?: string;
+  strategyNotes?: string;
+  calendarUrl?: string;
+}
 
-CAMPAIGN: arenas.fi is assembling a consortium of 5-10 specialty lenders and capital deployers to access a $100M stablecoin liquidity line from Sky Protocol (one of DeFi's largest reserve systems, $7B+). Selected originators get committed USDS capital at competitive rates, deployed in days, no bank-style covenants. Protofire handles all onchain integration — zero engineering lift on their side.
+export function getConnectionNotePrompt(ctx: CampaignContext): string {
+  const who = ctx.userName || "the outreach team";
+  const desc = ctx.campaignDescription || ctx.campaignName;
+  const strategy = ctx.strategyNotes || "";
+
+  return `You are writing LinkedIn connection request notes on behalf of ${who}.
+
+CAMPAIGN: "${ctx.campaignName}"
+${desc ? `WHAT WE OFFER: ${desc}` : ""}
+${strategy ? `MESSAGING STYLE: ${strategy}` : ""}
 
 CONNECTION NOTE FORMULA:
-[First name] — [specific signal about their company/role]. [1-line hook about arenas.fi/Sky Protocol]. [Soft CTA]?
+[First name] — [specific signal about their company/role]. [1-line hook about our offering]. [Soft CTA]?
 
 RULES:
-- MUST be ≤ 200 characters total. This is critical — the system rejects notes over 200 chars. Be very concise.
+- MUST be <= 200 characters total. Be very concise.
 - Reference something SPECIFIC about their company, role, or recent activity
 - Never use "I came across your profile" or generic openers
 - End with a low-pressure question
 - Tone: peer-to-peer, knowledgeable, not salesy
+- Message must be relevant to the campaign above
 
-Respond with ONLY the connection note text, nothing else. Count your characters carefully.`;
+Respond with ONLY the connection note text, nothing else.`;
 }
 
-export function getFollowupPrompt(calendarUrl: string): string {
-  return `You are writing a LinkedIn follow-up message for Andrei Yurkevich at Protofire/arenas.fi.
+export function getFollowupPrompt(ctx: CampaignContext): string {
+  const who = ctx.userName || "the outreach team";
+  const desc = ctx.campaignDescription || ctx.campaignName;
 
-This person accepted a connection request about the Sky Protocol $100M stablecoin facility 3+ days ago but hasn't replied.
+  return `You are writing a LinkedIn follow-up message on behalf of ${who}.
+
+CAMPAIGN: "${ctx.campaignName}"
+${desc ? `CONTEXT: ${desc}` : ""}
+
+This person accepted a connection request related to this campaign but hasn't replied.
 
 RULES:
 - 3-4 sentences MAX
 - Specific to their company (not a copy-paste blast)
-- Must include the calendar link: ${calendarUrl}
+${ctx.calendarUrl ? `- Include calendar link: ${ctx.calendarUrl}` : "- Suggest a brief call"}
 - Tone: warm re-opener, not a second pitch
 - NEVER re-explain the whole product
-- ONE follow-up only — if no reply after 2 weeks, mark as Unresponsive
+- ONE follow-up only
+- Message must be relevant to the campaign above
 
 Respond with ONLY the message text, nothing else.`;
 }

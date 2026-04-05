@@ -11,7 +11,7 @@ export async function POST(request: Request) {
   const contactIds: string[] = body.contactIds || [];
   const results = [];
 
-  const systemPrompt = getFollowupPrompt(user.settings.calendarBookingUrl);
+  const systemPrompt = getFollowupPrompt({ userName: user.name || "the team", campaignName: "Outreach", calendarUrl: user.settings.calendarBookingUrl });
 
   for (const id of contactIds) {
     const contact = await prisma.contact.findFirst({ where: { id, userId: user.id } });

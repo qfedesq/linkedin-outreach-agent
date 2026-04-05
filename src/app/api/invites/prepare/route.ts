@@ -44,7 +44,7 @@ export async function POST() {
     message: `Preparing invite batch for ${contacts.length} contacts...`,
   });
 
-  const systemPrompt = getConnectionNotePrompt(user.settings.calendarBookingUrl);
+  const systemPrompt = getConnectionNotePrompt({ userName: user.name || "the team", campaignName: "Outreach", calendarUrl: user.settings.calendarBookingUrl });
 
   // Create batch
   const batch = await prisma.inviteBatch.create({ data: { userId: user.id } });
@@ -73,7 +73,7 @@ export async function POST() {
         message: `Generated note for ${contact.name} (${message.length} chars): "${message.substring(0, 80)}..."`,
       });
     } catch {
-      message = `${contact.name.split(" ")[0]} — would love to connect and share how arenas.fi's $100M Sky Protocol facility could support ${contact.company || "your"} lending operations. Open to a quick call?`.substring(0, 200);
+      message = `${contact.name.split(" ")[0]} — would love to connect. Open to a quick chat?`.substring(0, 200);
     }
 
     const item = await prisma.inviteBatchItem.create({

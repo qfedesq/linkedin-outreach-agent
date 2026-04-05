@@ -32,7 +32,7 @@ model UserSettings {
   calendarBookingUrl    String    @default("https://calendar.app.google/k8XEhkPnX6sc2GdW9")
   preferredModel        String    @default("anthropic/claude-sonnet-4")
   // Campaign configuration
-  campaignName          String    @default("Sky Protocol $100M Facility")
+  campaignName          String    @default("")
   campaignDescription   String?
   icpDefinition         String?   // Target ICP definition (editable by user)
   strategyNotes         String?   // Outreach strategy (agent reads + updates)

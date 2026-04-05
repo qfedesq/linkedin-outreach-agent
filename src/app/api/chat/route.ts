@@ -196,7 +196,7 @@ export async function GET(request: NextRequest) {
 }
 
 function buildSystemPrompt(knowledge: string, autonomyLevel: string, strategyNotes: string, campaignContext?: string) {
-  return `You are the LinkedIn Outreach Agent by Protofire.
+  return `You are a LinkedIn Outreach Agent.
 
 YOUR GOAL: Maximize meetings booked. Discover, score, invite, follow up, detect replies.
 ${campaignContext || "No specific campaign selected."}

@@ -29,7 +29,7 @@ export async function POST() {
     message: `Generating follow-up messages for ${contacts.length} contacts`,
   });
 
-  const systemPrompt = getFollowupPrompt(user.settings.calendarBookingUrl);
+  const systemPrompt = getFollowupPrompt({ userName: user.name || "the team", campaignName: "Outreach", calendarUrl: user.settings.calendarBookingUrl });
   const drafts = [];
 
   for (const contact of contacts) {

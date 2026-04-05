@@ -45,7 +45,7 @@ export default function LoginPage() {
           </div>
           <CardTitle className="text-2xl">LinkedIn Outreach Agent</CardTitle>
           <CardDescription>
-            Autonomous B2B outreach for arenas.fi Sky Protocol
+            Autonomous LinkedIn B2B outreach agent
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">

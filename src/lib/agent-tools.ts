@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { decrypt } from "@/lib/encryption";
-import { callLLM, getIcpScoringPrompt, getConnectionNotePrompt, getFollowupPrompt } from "@/lib/llm";
+import { callLLM, getIcpScoringPrompt, getConnectionNotePrompt, getFollowupPrompt, CampaignContext } from "@/lib/llm";
 import { createLinkedIn } from "@/lib/linkedin-provider";
 import { logActivity } from "@/lib/activity-log";
 import { setAgentStatus } from "@/lib/agent-status";
@@ -22,7 +22,7 @@ export function getToolDefinitions() {
   return [
     { type: "function" as const, function: { name: "get_pipeline_stats", description: "Get pipeline: total contacts, counts by status, conversion rates", parameters: { type: "object", properties: {} } } },
     { type: "function" as const, function: { name: "search_contacts", description: "Search contacts by name/company/status/fit", parameters: { type: "object", properties: { query: { type: "string" }, status: { type: "string", enum: ["TO_CONTACT","INVITED","CONNECTED","FOLLOWED_UP","REPLIED","MEETING_BOOKED","UNRESPONSIVE"] }, fit: { type: "string", enum: ["HIGH","MEDIUM","LOW"] }, limit: { type: "number" } } } } },
-    { type: "function" as const, function: { name: "discover_prospects", description: "EXECUTE: Run Apify scrape to find new prospects by job title + location. Takes 2-3 minutes.", parameters: { type: "object", properties: { job_title: { type: "string", description: "e.g. CEO, CFO, VP Lending" }, location: { type: "string", description: "e.g. United Kingdom" }, count: { type: "number", description: "max results (default 25)" } }, required: ["job_title"] } } },
+    { type: "function" as const, function: { name: "discover_prospects", description: "EXECUTE: Search LinkedIn for prospects by keyword + location. Assigns to specified campaign.", parameters: { type: "object", properties: { job_title: { type: "string", description: "e.g. CEO, CFO, VP Lending" }, location: { type: "string", description: "e.g. United Kingdom" }, count: { type: "number", description: "max results (default 25)" }, campaign_id: { type: "string", description: "Campaign ID to assign contacts to" } }, required: ["job_title"] } } },
     { type: "function" as const, function: { name: "score_contacts", description: "EXECUTE: Score unscored contacts using LLM (HIGH/MEDIUM/LOW fit)", parameters: { type: "object", properties: { limit: { type: "number", description: "max to score (default 10)" } } } } },
     { type: "function" as const, function: { name: "prepare_invites", description: "EXECUTE: Generate personalized connection notes via LLM for TO_CONTACT contacts. Returns draft messages for review.", parameters: { type: "object", properties: { count: { type: "number", description: "max invites to prepare (default 10)" } } } } },
     { type: "function" as const, function: { name: "send_invites", description: "EXECUTE: Send approved invites via LinkedIn (Unipile). Sends one by one.", parameters: { type: "object", properties: { batch_id: { type: "string", description: "Batch ID to send" } }, required: ["batch_id"] } } },
@@ -143,6 +143,7 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
             linkedinProfileId: providerId,
             connectionDegree: degree,
             source: "unipile",
+            campaignId: (args.campaign_id as string) || null,
           });
           if (result.created) {
             created++;
@@ -213,17 +214,28 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
       const contacts = await prisma.contact.findMany({ where: { userId, status: "TO_CONTACT" }, orderBy: [{ profileFit: "asc" }, { createdAt: "asc" }], take: maxBatch });
       if (contacts.length === 0) return { success: true, message: "No contacts ready for invites." };
 
-      const systemPrompt = getConnectionNotePrompt(settings.calendarBookingUrl);
+      // Load campaign context for each contact's campaign
+      const campCache = new Map<string, CampaignContext>();
+      const userName = (await prisma.user.findUnique({ where: { id: userId } }))?.name || "the outreach team";
       const batch = await prisma.inviteBatch.create({ data: { userId } });
       const items = [];
 
       for (const c of contacts) {
         const userPrompt = [`Name: ${c.name}`, c.position && `Position: ${c.position}`, c.company && `Company: ${c.company}`, c.fitRationale && `Fit: ${c.fitRationale}`].filter(Boolean).join("\n");
         let msg = "";
+        let campCtx: CampaignContext = { userName, campaignName: "Outreach" };
+        if (c.campaignId) {
+          if (!campCache.has(c.campaignId)) {
+            const camp = await prisma.campaign.findFirst({ where: { id: c.campaignId, userId } });
+            if (camp) campCache.set(c.campaignId, { userName, campaignName: camp.name, campaignDescription: camp.description || undefined, strategyNotes: camp.strategyNotes || undefined, calendarUrl: camp.calendarUrl || undefined });
+          }
+          campCtx = campCache.get(c.campaignId) || campCtx;
+        }
         try {
+          const systemPrompt = getConnectionNotePrompt(campCtx);
           msg = (await callLLM(systemPrompt, userPrompt, settings.openrouterApiKey, settings.preferredModel, { temperature: 0.8, maxTokens: 200 })).trim().substring(0, 200);
         } catch {
-          msg = `${c.name.split(" ")[0]} — would love to connect about arenas.fi's $100M Sky Protocol facility. Open to a quick call?`.substring(0, 300);
+          msg = `${c.name.split(" ")[0]} — would love to connect about ${campCtx.campaignName}. Open to a quick chat?`.substring(0, 200);
         }
         const item = await prisma.inviteBatchItem.create({ data: { batchId: batch.id, contactId: c.id, draftMessage: msg } });
         items.push({ name: c.name, company: c.company, fit: c.profileFit, message: msg });
@@ -371,7 +383,8 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
       const due = await prisma.contact.findMany({ where: { userId, status: "CONNECTED", connectedDate: { lte: cutoff }, followupSentDate: null } });
       if (due.length === 0) return { success: true, message: "No contacts due for follow-up." };
 
-      const systemPrompt = getFollowupPrompt(settings.calendarBookingUrl);
+      const fUserName = (await prisma.user.findUnique({ where: { id: userId } }))?.name || "the outreach team";
+      const fCampCache = new Map<string, CampaignContext>();
       let sent = 0;
       let skippedFollowup = 0;
       for (const c of due) {
@@ -388,7 +401,16 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
         const userPrompt = [`Name: ${c.name}`, c.position && `Position: ${c.position}`, c.company && `Company: ${c.company}`].filter(Boolean).join("\n");
         try {
           setAgentStatus(userId, `Sending follow-up to ${c.name}...`);
-          const msg = (await callLLM(systemPrompt, userPrompt, settings.openrouterApiKey, settings.preferredModel, { temperature: 0.7, maxTokens: 300 })).trim();
+          let fCtx: CampaignContext = { userName: fUserName, campaignName: "Outreach" };
+          if (c.campaignId) {
+            if (!fCampCache.has(c.campaignId)) {
+              const camp = await prisma.campaign.findFirst({ where: { id: c.campaignId, userId } });
+              if (camp) fCampCache.set(c.campaignId, { userName: fUserName, campaignName: camp.name, campaignDescription: camp.description || undefined, calendarUrl: camp.calendarUrl || settings.calendarBookingUrl || undefined });
+            }
+            fCtx = fCampCache.get(c.campaignId) || fCtx;
+          }
+          const fPrompt = getFollowupPrompt(fCtx);
+          const msg = (await callLLM(fPrompt, userPrompt, settings.openrouterApiKey, settings.preferredModel, { temperature: 0.7, maxTokens: 300 })).trim();
           await linkedin.sendMessage([c.linkedinProfileId!], msg);
           await prisma.contact.update({ where: { id: c.id }, data: { status: "FOLLOWED_UP", followupSentDate: new Date() } });
           sent++;
