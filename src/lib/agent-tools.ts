@@ -4,6 +4,7 @@ import { callLLM, getIcpScoringPrompt, getConnectionNotePrompt, getFollowupPromp
 import { createLinkedIn } from "@/lib/linkedin-provider";
 import { logActivity } from "@/lib/activity-log";
 import { setAgentStatus } from "@/lib/agent-status";
+import { canPerformAction, canInviteContact, canFollowupContact, humanDelay, getUsageSummary } from "@/lib/linkedin-limits";
 
 export interface ToolResult {
   success: boolean;
@@ -31,6 +32,7 @@ export function getToolDefinitions() {
     { type: "function" as const, function: { name: "get_recent_activity", description: "Get recent execution logs", parameters: { type: "object", properties: { limit: { type: "number" } } } } },
     { type: "function" as const, function: { name: "learn", description: "Save a learning/insight to the knowledge base (persists across sessions)", parameters: { type: "object", properties: { category: { type: "string", enum: ["message_style","icp_insight","strategy","correction"] }, content: { type: "string", description: "The learning to remember" } }, required: ["category","content"] } } },
     { type: "function" as const, function: { name: "get_knowledge", description: "Read all accumulated knowledge/learnings from past sessions", parameters: { type: "object", properties: {} } } },
+    { type: "function" as const, function: { name: "get_usage_limits", description: "Check current LinkedIn usage vs safety limits (invites today/week, messages, searches)", parameters: { type: "object", properties: {} } } },
     // ===== CAMPAIGN MANAGEMENT =====
     { type: "function" as const, function: { name: "create_campaign", description: "Create a new outreach campaign with name, description, ICP, and strategy", parameters: { type: "object", properties: { name: { type: "string", description: "Campaign name" }, description: { type: "string", description: "Campaign description" }, icpDefinition: { type: "string", description: "ICP scoring criteria" }, strategyNotes: { type: "string", description: "Outreach strategy and messaging notes" }, calendarUrl: { type: "string", description: "Calendar booking URL" } }, required: ["name"] } } },
     { type: "function" as const, function: { name: "list_campaigns", description: "List all campaigns with their status and contact counts", parameters: { type: "object", properties: {} } } },
@@ -95,6 +97,10 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
     case "discover_prospects": {
       const linkedin = settings ? createLinkedIn(settings) : null;
       if (!linkedin) return { success: false, message: "Unipile not configured. Go to Settings." };
+
+      // Rate limit check
+      const searchCheck = await canPerformAction(userId, "search");
+      if (!searchCheck.allowed) return { success: false, message: `Search blocked: ${searchCheck.reason}` };
 
       const keywords = (args.job_title as string) || "CEO fintech";
       const location = (args.location as string) || undefined;
@@ -203,10 +209,26 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
       const items = await prisma.inviteBatchItem.findMany({ where: { batchId, approved: true, sent: false, batch: { userId } }, include: { batch: true } });
       if (items.length === 0) return { success: true, message: "No pending invites in this batch." };
 
-      let sent = 0, failed = 0;
+      let sent = 0, failed = 0, blocked = 0;
       for (const item of items) {
+        // Check rate limits before each invite
+        const rateCheck = await canPerformAction(userId, "invite");
+        if (!rateCheck.allowed) {
+          setAgentStatus(userId, `Rate limit: ${rateCheck.reason}`);
+          await logActivity(userId, "send_invite", { level: "warning", message: `Stopped: ${rateCheck.reason}`, success: true });
+          return { success: true, data: { sent, failed, blocked: items.length - sent - failed }, message: `Sent ${sent} invites, then stopped: ${rateCheck.reason}. ${items.length - sent - failed} remaining in queue.` };
+        }
+
         const contact = await prisma.contact.findUnique({ where: { id: item.contactId } });
         if (!contact) continue;
+
+        // Check per-contact limits
+        const contactCheck = await canInviteContact(userId, contact.id);
+        if (!contactCheck.allowed) {
+          await prisma.inviteBatchItem.update({ where: { id: item.id }, data: { sent: true, sendResult: `skipped: ${contactCheck.reason}` } });
+          blocked++;
+          continue;
+        }
 
         // Get provider_id — look up via Unipile if we only have slug
         let providerId = contact.linkedinProfileId || contact.linkedinEntityUrn || "";
@@ -220,19 +242,33 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
         if (!providerId) { failed++; continue; }
 
         try {
+          setAgentStatus(userId, `Sending invite to ${contact.name}...`);
           await linkedin.sendInvitation(providerId, (item.editedMessage || item.draftMessage).substring(0, 200));
           await prisma.inviteBatchItem.update({ where: { id: item.id }, data: { sent: true, sentAt: new Date(), sendResult: "success" } });
           await prisma.contact.update({ where: { id: contact.id }, data: { status: "INVITED", inviteSentDate: new Date(), connectionMessage: item.editedMessage || item.draftMessage } });
           sent++;
           await logActivity(userId, "send_invite", { level: "success", message: `Invite sent to ${contact.name}`, contactId: contact.id });
+
+          // Human-like delay between invites (45s ± 20%)
+          if (sent < items.length) {
+            setAgentStatus(userId, `Waiting between invites... (${sent}/${items.length})`);
+            await humanDelay(45000);
+          }
         } catch (e) {
           failed++;
-          await prisma.inviteBatchItem.update({ where: { id: item.id }, data: { sent: true, sendResult: "failed" } });
-          await logActivity(userId, "send_invite", { level: "error", message: `Failed: ${contact.name} — ${(e as Error).message}`, success: false });
+          const errMsg = (e as Error).message;
+          await prisma.inviteBatchItem.update({ where: { id: item.id }, data: { sent: true, sendResult: `failed: ${errMsg.substring(0, 100)}` } });
+          await logActivity(userId, "send_invite", { level: "error", message: `Failed: ${contact.name} — ${errMsg}`, success: false, errorCode: errMsg.substring(0, 50) });
+
+          // If it's a rate limit error, stop immediately
+          if (errMsg.includes("429") || errMsg.includes("rate") || errMsg.includes("limit") || errMsg.includes("restrict")) {
+            await logActivity(userId, "send_invite", { level: "error", message: `RATE LIMIT DETECTED — stopping all sends. ${sent} sent, ${items.length - sent - failed} remaining.`, success: false, errorCode: "rate_limit" });
+            return { success: false, message: `Rate limit detected after ${sent} invites. Stopped to protect your account. ${items.length - sent - failed} remaining — try again later.` };
+          }
         }
       }
 
-      return { success: true, data: { sent, failed }, message: `Sent ${sent} invites, ${failed} failed.` };
+      return { success: true, data: { sent, failed, blocked }, message: `Sent ${sent} invites${failed > 0 ? `, ${failed} failed` : ""}${blocked > 0 ? `, ${blocked} skipped (already contacted)` : ""}.` };
     }
 
     case "check_connections_and_inbox": {
@@ -292,6 +328,10 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
       const linkedin = settings ? createLinkedIn(settings) : null;
       if (!linkedin) return { success: false, message: "Unipile not configured." };
 
+      // Rate limit check
+      const msgCheck = await canPerformAction(userId, "message");
+      if (!msgCheck.allowed) return { success: false, message: `Follow-ups blocked: ${msgCheck.reason}` };
+
       const delayDays = settings.followupDelayDays || 3;
       const cutoff = new Date(Date.now() - delayDays * 24 * 60 * 60 * 1000);
       const due = await prisma.contact.findMany({ where: { userId, status: "CONNECTED", connectedDate: { lte: cutoff }, followupSentDate: null } });
@@ -299,25 +339,53 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
 
       const systemPrompt = getFollowupPrompt(settings.calendarBookingUrl);
       let sent = 0;
+      let skippedFollowup = 0;
       for (const c of due) {
+        // Per-contact check
+        const fCheck = await canFollowupContact(userId, c.id);
+        if (!fCheck.allowed) { skippedFollowup++; continue; }
+
+        // Rate limit check before each message
+        const mCheck = await canPerformAction(userId, "message");
+        if (!mCheck.allowed) {
+          return { success: true, message: `Sent ${sent} follow-ups, then stopped: ${mCheck.reason}` };
+        }
+
         const userPrompt = [`Name: ${c.name}`, c.position && `Position: ${c.position}`, c.company && `Company: ${c.company}`].filter(Boolean).join("\n");
         try {
+          setAgentStatus(userId, `Sending follow-up to ${c.name}...`);
           const msg = (await callLLM(systemPrompt, userPrompt, settings.openrouterApiKey, settings.preferredModel, { temperature: 0.7, maxTokens: 300 })).trim();
           await linkedin.sendMessage([c.linkedinProfileId!], msg);
           await prisma.contact.update({ where: { id: c.id }, data: { status: "FOLLOWED_UP", followupSentDate: new Date() } });
           sent++;
           await logActivity(userId, "send_followup", { level: "success", message: `Follow-up sent to ${c.name}` });
+
+          // Human delay between messages
+          if (sent < due.length) await humanDelay(30000);
         } catch (e) {
-          await logActivity(userId, "send_followup", { level: "error", message: `Follow-up failed for ${c.name}: ${(e as Error).message}`, success: false });
+          const errMsg = (e as Error).message;
+          await logActivity(userId, "send_followup", { level: "error", message: `Failed: ${c.name} — ${errMsg}`, success: false, errorCode: errMsg.substring(0, 50) });
+          if (errMsg.includes("429") || errMsg.includes("rate")) {
+            return { success: false, message: `Rate limit after ${sent} follow-ups. Stopped to protect account.` };
+          }
         }
       }
-      return { success: true, message: `Sent ${sent}/${due.length} follow-ups.` };
+      return { success: true, message: `Sent ${sent}/${due.length} follow-ups${skippedFollowup > 0 ? ` (${skippedFollowup} skipped)` : ""}.` };
     }
 
     case "run_full_cycle": {
       const r1 = await executeTool("check_connections_and_inbox", {}, userId);
       const r2 = await executeTool("send_followups", {}, userId);
       return { success: true, message: `Daily cycle complete:\n• ${r1.message}\n• ${r2.message}` };
+    }
+
+    case "get_usage_limits": {
+      const usage = await getUsageSummary(userId);
+      return {
+        success: true,
+        data: usage,
+        message: `LinkedIn usage:\n• Invites: ${usage.invites.today}/${usage.invites.todayLimit} today, ${usage.invites.week}/${usage.invites.weekLimit} this week\n• Messages: ${usage.messages.today}/${usage.messages.todayLimit} today\n• Searches: ${usage.searches.today}/${usage.searches.todayLimit} today`,
+      };
     }
 
     // ===== CAMPAIGN MANAGEMENT =====
