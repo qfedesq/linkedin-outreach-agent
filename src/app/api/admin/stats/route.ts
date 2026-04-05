@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  await logActivity(session.user.id, "admin_access", { message: "Admin dashboard accessed" });
+  await logActivity((session.user as any).id, "admin_access", { message: "Admin dashboard accessed" });
 
   const { searchParams } = new URL(request.url);
   const period = searchParams.get("period") || "month";
