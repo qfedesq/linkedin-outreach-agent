@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser, unauthorized } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
+import { checkDuplicate } from "@/lib/contact-dedup";
 
 function normalizeLinkedInUrl(url: string): string {
   return url
@@ -65,6 +66,13 @@ export async function POST(request: Request) {
   for (const c of contacts) {
     const normalizedUrl = normalizeLinkedInUrl(c.linkedinUrl);
     const slug = extractSlug(normalizedUrl);
+
+    // Cross-campaign dedup check
+    const dedup = await checkDuplicate(user.id, normalizedUrl);
+    if (dedup.isDuplicate) {
+      skipped.push(normalizedUrl);
+      continue;
+    }
 
     try {
       const contact = await prisma.contact.create({

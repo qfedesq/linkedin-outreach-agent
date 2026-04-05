@@ -5,6 +5,7 @@ import { createLinkedIn } from "@/lib/linkedin-provider";
 import { logActivity } from "@/lib/activity-log";
 import { setAgentStatus } from "@/lib/agent-status";
 import { canPerformAction, canInviteContact, canFollowupContact, humanDelay, getUsageSummary } from "@/lib/linkedin-limits";
+import { createContactSafe } from "@/lib/contact-dedup";
 
 export interface ToolResult {
   success: boolean;
@@ -38,6 +39,8 @@ export function getToolDefinitions() {
     { type: "function" as const, function: { name: "list_campaigns", description: "List all campaigns with their status and contact counts", parameters: { type: "object", properties: {} } } },
     { type: "function" as const, function: { name: "update_campaign", description: "Update a campaign's settings (name, description, ICP, strategy, calendar, limits)", parameters: { type: "object", properties: { campaign_id: { type: "string" }, name: { type: "string" }, description: { type: "string" }, icpDefinition: { type: "string" }, strategyNotes: { type: "string" }, calendarUrl: { type: "string" }, dailyInviteLimit: { type: "number" }, followupDelayDays: { type: "number" }, isActive: { type: "boolean" } }, required: ["campaign_id"] } } },
     { type: "function" as const, function: { name: "delete_campaign", description: "Delete a campaign (contacts are preserved)", parameters: { type: "object", properties: { campaign_id: { type: "string" } }, required: ["campaign_id"] } } },
+    // ===== CONTACT MANAGEMENT =====
+    { type: "function" as const, function: { name: "delete_contacts", description: "Delete contacts by IDs, by status, or all contacts in a campaign", parameters: { type: "object", properties: { contact_ids: { type: "array", items: { type: "string" }, description: "Specific contact IDs to delete" }, status: { type: "string", description: "Delete all contacts with this status (e.g. TO_CONTACT, UNRESPONSIVE)" }, campaign_id: { type: "string", description: "Delete all contacts in this campaign" }, confirm: { type: "boolean", description: "Must be true to execute bulk deletes" } } } } },
   ];
 }
 
@@ -125,21 +128,17 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
           const slug = p.public_identifier || url.match(/linkedin\.com\/in\/([^/?]+)/i)?.[1] || null;
           const providerId = p.member_urn || p.id || null;
 
-          try {
-            await prisma.contact.create({
-              data: {
-                name: p.name || "Unknown",
-                position: p.headline || null,
-                company: null,
-                linkedinUrl: url.replace(/^https?:\/\/(www\.)?linkedin\.com/, "https://www.linkedin.com"),
-                linkedinSlug: slug,
-                linkedinProfileId: providerId,
-                source: "unipile",
-                userId,
-              },
-            });
-            created++;
-          } catch { skipped++; }
+          const result = await createContactSafe(userId, {
+            name: p.name || "Unknown",
+            position: p.headline || null,
+            company: null,
+            linkedinUrl: url,
+            linkedinSlug: slug,
+            linkedinProfileId: providerId,
+            source: "unipile",
+          });
+          if (result.created) created++;
+          else skipped++;
         }
 
         await logActivity(userId, "linkedin_search", { level: "success", message: `Found ${items.length}, saved ${created} new (${skipped} skipped)`, success: true });
@@ -439,6 +438,58 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
       await prisma.campaign.deleteMany({ where: { id: did, userId } });
       await logActivity(userId, "delete_campaign", { level: "info", message: `Deleted campaign: ${camp.name}` });
       return { success: true, message: `Campaign "${camp.name}" deleted. Contacts preserved.` };
+    }
+
+    // ===== CONTACT MANAGEMENT =====
+    case "delete_contacts": {
+      const contactIds = args.contact_ids as string[] | undefined;
+      const statusFilter = args.status as string | undefined;
+      const campaignIdFilter = args.campaign_id as string | undefined;
+      const confirm = args.confirm as boolean;
+
+      // Build description of what will be deleted
+      let description = "";
+      let count = 0;
+
+      if (contactIds?.length) {
+        count = contactIds.length;
+        description = `${count} specific contacts`;
+      } else if (campaignIdFilter) {
+        count = await prisma.contact.count({ where: { userId, campaignId: campaignIdFilter } });
+        const camp = await prisma.campaign.findFirst({ where: { id: campaignIdFilter, userId } });
+        description = `all ${count} contacts in campaign "${camp?.name || campaignIdFilter}"`;
+      } else if (statusFilter) {
+        count = await prisma.contact.count({ where: { userId, status: statusFilter } });
+        description = `all ${count} contacts with status ${statusFilter}`;
+      } else {
+        return { success: false, message: "Specify contact_ids, status, or campaign_id to delete." };
+      }
+
+      if (count === 0) return { success: true, message: "No contacts match the criteria." };
+
+      // Require confirmation for bulk deletes
+      if (!confirm) {
+        return { success: false, message: `This will delete ${description}. Call again with confirm: true to proceed.` };
+      }
+
+      // Delete related batch items first
+      if (contactIds?.length) {
+        await prisma.inviteBatchItem.deleteMany({ where: { contactId: { in: contactIds } } });
+        await prisma.contact.deleteMany({ where: { id: { in: contactIds }, userId } });
+      } else if (campaignIdFilter) {
+        const contacts = await prisma.contact.findMany({ where: { userId, campaignId: campaignIdFilter }, select: { id: true } });
+        const ids = contacts.map(c => c.id);
+        if (ids.length > 0) await prisma.inviteBatchItem.deleteMany({ where: { contactId: { in: ids } } });
+        await prisma.contact.deleteMany({ where: { userId, campaignId: campaignIdFilter } });
+      } else if (statusFilter) {
+        const contacts = await prisma.contact.findMany({ where: { userId, status: statusFilter }, select: { id: true } });
+        const ids = contacts.map(c => c.id);
+        if (ids.length > 0) await prisma.inviteBatchItem.deleteMany({ where: { contactId: { in: ids } } });
+        await prisma.contact.deleteMany({ where: { userId, status: statusFilter } });
+      }
+
+      await logActivity(userId, "delete_contacts", { level: "info", message: `Deleted ${description}` });
+      return { success: true, message: `Deleted ${description}.` };
     }
 
     default:
