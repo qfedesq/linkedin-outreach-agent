@@ -26,7 +26,7 @@ export function Sidebar() {
   const pathname = usePathname();
   const [inviteCount, setInviteCount] = useState({ sent: 0, max: 20 });
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
-  const [usage, setUsage] = useState({ totalTokens: 0, totalCost: 0, calls: 0 });
+  const [usage, setUsage] = useState({ totalTokens: 0, totalCost: 0, calls: 0, todayLLMCalls: 0, totalLLMCalls: 0 });
 
   useEffect(() => {
     fetch("/api/contacts?status=INVITED&limit=1")
@@ -115,13 +115,27 @@ export function Sidebar() {
           <p className="text-[11px] text-foreground mt-2 font-medium font-mono">{inviteCount.sent}/{inviteCount.max}</p>
         </div>
 
-        {usage.calls > 0 && (
-          <div className="bg-card rounded-lg p-3 border border-border mb-3">
-            <p className="text-[10px] text-muted-foreground uppercase tracking-widest mb-1 font-bold">LLM Usage</p>
-            <p className="text-[11px] font-mono">{(usage.totalTokens / 1000).toFixed(1)}k tokens</p>
-            <p className="text-[10px] text-muted-foreground">${usage.totalCost.toFixed(4)} • {usage.calls} calls</p>
+        <div className="bg-card rounded-lg p-3 border border-border mb-3">
+          <p className="text-[10px] text-muted-foreground uppercase tracking-widest mb-1 font-bold">OpenRouter</p>
+          <div className="space-y-1">
+            <div className="flex justify-between text-[10px]">
+              <span className="text-muted-foreground">Tokens</span>
+              <span className="font-mono text-foreground">{usage.totalTokens > 0 ? `${(usage.totalTokens / 1000).toFixed(1)}k` : "—"}</span>
+            </div>
+            <div className="flex justify-between text-[10px]">
+              <span className="text-muted-foreground">Cost</span>
+              <span className="font-mono text-foreground">{usage.totalCost > 0 ? `$${usage.totalCost.toFixed(4)}` : "—"}</span>
+            </div>
+            <div className="flex justify-between text-[10px]">
+              <span className="text-muted-foreground">Calls today</span>
+              <span className="font-mono text-foreground">{usage.todayLLMCalls || 0}</span>
+            </div>
+            <div className="flex justify-between text-[10px]">
+              <span className="text-muted-foreground">Total calls</span>
+              <span className="font-mono text-foreground">{usage.totalLLMCalls || 0}</span>
+            </div>
           </div>
-        )}
+        </div>
 
         <div className="border-t border-sidebar-border pt-2 space-y-0.5">
           {bottomItems.map((item) => (

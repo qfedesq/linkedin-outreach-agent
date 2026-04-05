@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAuthUser, unauthorized } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
-import { callLLM, ICP_SCORING_PROMPT } from "@/lib/llm";
+import { callLLM, getIcpScoringPrompt } from "@/lib/llm";
 import { logActivity } from "@/lib/activity-log";
 
 export async function POST(request: Request) {
@@ -17,9 +17,24 @@ export async function POST(request: Request) {
     message: `Scoring ${contactIds.length} contacts via LLM...`,
   });
 
+  // Build campaign ICP cache
+  const campaignIcpCache = new Map<string, string>();
+
   for (const id of contactIds) {
     const contact = await prisma.contact.findFirst({ where: { id, userId: user.id } });
     if (!contact) continue;
+
+    // Get campaign-specific ICP if contact belongs to a campaign
+    let icpDef = user.settings.icpDefinition;
+    if (contact.campaignId) {
+      if (!campaignIcpCache.has(contact.campaignId)) {
+        const camp = await prisma.campaign.findFirst({ where: { id: contact.campaignId, userId: user.id } });
+        if (camp?.icpDefinition) campaignIcpCache.set(contact.campaignId, camp.icpDefinition);
+      }
+      icpDef = campaignIcpCache.get(contact.campaignId) || icpDef;
+    }
+
+    const icpPrompt = getIcpScoringPrompt(icpDef);
 
     const profileText = [
       `Name: ${contact.name}`,
@@ -29,7 +44,7 @@ export async function POST(request: Request) {
     ].filter(Boolean).join("\n");
 
     try {
-      const response = await callLLM(ICP_SCORING_PROMPT, profileText, user.settings.openrouterApiKey, user.settings.preferredModel);
+      const response = await callLLM(icpPrompt, profileText, user.settings.openrouterApiKey, user.settings.preferredModel);
       const parsed = JSON.parse(response.trim());
       await prisma.contact.update({
         where: { id },

@@ -163,12 +163,22 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
       const contacts = await prisma.contact.findMany({ where: { userId, fitRationale: null }, take: (args.limit as number) || 10 });
       if (contacts.length === 0) return { success: true, message: "All contacts are already scored." };
 
+      // Build a cache of campaign ICP definitions
+      const campaignIcpCache = new Map<string, string>();
+      const campaignIds = [...new Set(contacts.map(c => c.campaignId).filter(Boolean))];
+      for (const cid of campaignIds) {
+        const camp = await prisma.campaign.findFirst({ where: { id: cid!, userId } });
+        if (camp?.icpDefinition) campaignIcpCache.set(cid!, camp.icpDefinition);
+      }
+
       const results = [];
       for (const c of contacts) {
         const text = [`Name: ${c.name}`, c.position && `Position: ${c.position}`, c.company && `Company: ${c.company}`].filter(Boolean).join("\n");
         try {
           setAgentStatus(userId, `Scoring ${c.name}...`);
-          const icpPrompt = getIcpScoringPrompt(settings.icpDefinition);
+          // Use campaign-specific ICP if contact belongs to a campaign, otherwise global
+          const campaignIcp = c.campaignId ? campaignIcpCache.get(c.campaignId) : null;
+          const icpPrompt = getIcpScoringPrompt(campaignIcp || settings.icpDefinition);
           const resp = await callLLM(icpPrompt, text, settings.openrouterApiKey, settings.preferredModel);
           const parsed = JSON.parse(resp.trim());
           await prisma.contact.update({ where: { id: c.id }, data: { profileFit: parsed.fit || "MEDIUM", fitRationale: parsed.rationale || null } });
