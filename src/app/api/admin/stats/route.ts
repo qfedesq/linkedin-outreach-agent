@@ -133,9 +133,20 @@ export async function GET(request: NextRequest) {
     };
   }));
 
+  // Additional stats
+  const inactiveUsers = totalUsers - activeUsersCount;
+  const inviteAcceptanceRate = totalInvites > 0 ? (totalConnections / totalInvites * 100).toFixed(2) : 0;
+  const responseRate = totalInvites > 0 ? (totalResponses / totalInvites * 100).toFixed(2) : 0;
+  const avgTokensPerUser = activeUsersCount > 0 ? Math.round(1000 / activeUsersCount) : 0; // placeholder
+  const totalCost = 0; // placeholder
+  const alerts = [];
+  if (inactiveUsers > totalUsers * 0.5) alerts.push("Más del 50% de usuarios inactivos");
+  if (totalInvites === 0) alerts.push("No hay invites enviados en el período");
+
   return NextResponse.json({
     totalUsers,
     activeUsers: activeUsersCount,
+    inactiveUsers,
     totalCampaigns,
     totalInvites,
     totalConnections,
@@ -145,6 +156,13 @@ export async function GET(request: NextRequest) {
     tokenUsage,
     usageTime: { totalHours: Math.round(totalHours), avgPerUser: Math.round(avgPerUser * 100) / 100 },
     topUsersByTime,
-    users: userStats
+    users: userStats,
+    ratios: {
+      inviteAcceptanceRate: `${inviteAcceptanceRate}%`,
+      responseRate: `${responseRate}%`,
+      avgTokensPerUser
+    },
+    totalCost,
+    alerts
   });
 }
