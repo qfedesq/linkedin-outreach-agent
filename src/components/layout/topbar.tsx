@@ -25,8 +25,8 @@ export function TopBar() {
 
   useEffect(() => {
     fetch("/api/settings").then(r => r.json()).then(data => {
-      setServices({ linkedin: !!data.unipileApiKey, openrouter: !!data.openrouterApiKey });
-    }).catch(() => {});
+      setServices({ linkedin: !!data?.unipileApiKey, openrouter: !!data?.openrouterApiKey });
+    }).catch(() => setServices({ linkedin: false, openrouter: false }));
   }, []);
 
   const connectedCount = Object.values(services).filter(Boolean).length;

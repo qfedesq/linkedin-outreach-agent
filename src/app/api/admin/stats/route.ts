@@ -92,6 +92,47 @@ export async function GET(request: NextRequest) {
     .sort((a, b) => b.hours - a.hours)
     .slice(0, 5);
 
+  // Individual user stats
+  const users = await prisma.user.findMany({
+    include: { settings: true }
+  });
+
+  const userStats = await Promise.all(users.map(async (user) => {
+    const campaigns = await prisma.campaign.count({ where: { userId: user.id } });
+    const contacts = await prisma.contact.count({ where: { userId: user.id } });
+    const invites = await prisma.executionLog.count({
+      where: { userId: user.id, action: "send_invite", success: true, createdAt: { gte: since } }
+    });
+    const connections = await prisma.executionLog.count({
+      where: { userId: user.id, action: "check_connections", success: true, createdAt: { gte: since } }
+    });
+    const responses = await prisma.executionLog.count({
+      where: { userId: user.id, action: "scan_inbox", success: true, createdAt: { gte: since } }
+    });
+    const followups = await prisma.executionLog.count({
+      where: { userId: user.id, action: "send_followup", success: true, createdAt: { gte: since } }
+    });
+    // Tokens and chat msgs placeholder
+    const tokens = 0; // TODO: calculate from logs if available
+    const chatMsgs = 0; // TODO
+    const cost = 0; // TODO
+
+    return {
+      email: user.email,
+      linkedin: !!user.settings?.unipileApiKey,
+      openrouter: !!user.settings?.openrouterApiKey,
+      campaigns,
+      contacts,
+      invites,
+      connections,
+      responses,
+      followups,
+      chatMsgs,
+      tokens,
+      cost
+    };
+  }));
+
   return NextResponse.json({
     totalUsers,
     activeUsers: activeUsersCount,
@@ -103,6 +144,7 @@ export async function GET(request: NextRequest) {
     contactsByUser,
     tokenUsage,
     usageTime: { totalHours: Math.round(totalHours), avgPerUser: Math.round(avgPerUser * 100) / 100 },
-    topUsersByTime
+    topUsersByTime,
+    users: userStats
   });
 }

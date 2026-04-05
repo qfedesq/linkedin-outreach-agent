@@ -144,6 +144,9 @@ export default function SettingsPage() {
             <Button onClick={() => testService("linkedin", "/api/settings/test-linkedin")} disabled={testing.linkedin} size="sm">
               {testing.linkedin && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Test Connection
             </Button>
+            <Button onClick={handleSave} disabled={saving} size="sm" variant="outline">
+              {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save
+            </Button>
             <TestResult id="linkedin" />
           </div>
         </CardContent>
@@ -156,10 +159,13 @@ export default function SettingsPage() {
           <SecretInput id="openrouterApiKey" label="API Key" value={settings.openrouterApiKey || ""} onChange={v => setSettings(p => ({ ...p, openrouterApiKey: v }))} />
           <ModelSelector value={settings.preferredModel} onChange={v => setSettings(p => ({ ...p, preferredModel: v }))} />
           <div className="flex items-center gap-4">
-            <Button onClick={() => testService("openrouter", "/api/settings/test-openrouter")} disabled={testing.openrouter} size="sm">
-              {testing.openrouter && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Test Connection
+            <Button onClick={() => testService("apify", "/api/settings/test-apify")} disabled={testing.apify} size="sm">
+              {testing.apify && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Test Connection
             </Button>
-            <TestResult id="openrouter" />
+            <Button onClick={handleSave} disabled={saving} size="sm" variant="outline">
+              {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save
+            </Button>
+            <TestResult id="apify" />
           </div>
         </CardContent>
       </Card>
