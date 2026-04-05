@@ -6,6 +6,7 @@ import { logActivity } from "@/lib/activity-log";
 import { setAgentStatus } from "@/lib/agent-status";
 import { canPerformAction, canInviteContact, canFollowupContact, humanDelay, getUsageSummary } from "@/lib/linkedin-limits";
 import { createContactSafe } from "@/lib/contact-dedup";
+import { diagnoseError, healError, checkSystemHealth } from "@/lib/self-heal";
 
 export interface ToolResult {
   success: boolean;
@@ -41,6 +42,9 @@ export function getToolDefinitions() {
     { type: "function" as const, function: { name: "delete_campaign", description: "Delete a campaign (contacts are preserved)", parameters: { type: "object", properties: { campaign_id: { type: "string" } }, required: ["campaign_id"] } } },
     // ===== CONTACT MANAGEMENT =====
     { type: "function" as const, function: { name: "delete_contacts", description: "Delete contacts by IDs, by status, or all contacts in a campaign", parameters: { type: "object", properties: { contact_ids: { type: "array", items: { type: "string" }, description: "Specific contact IDs to delete" }, status: { type: "string", description: "Delete all contacts with this status (e.g. TO_CONTACT, UNRESPONSIVE)" }, campaign_id: { type: "string", description: "Delete all contacts in this campaign" }, confirm: { type: "boolean", description: "Must be true to execute bulk deletes" } } } } },
+    // ===== SELF-HEALING =====
+    { type: "function" as const, function: { name: "diagnose_and_fix", description: "Diagnose an error from a failed tool, attempt auto-fix, and provide clear instructions. Call this when any tool returns success:false.", parameters: { type: "object", properties: { error_message: { type: "string", description: "The error message from the failed tool" }, failed_tool: { type: "string", description: "Name of the tool that failed" }, context: { type: "string", description: "Additional context about what was being attempted" } }, required: ["error_message", "failed_tool"] } } },
+    { type: "function" as const, function: { name: "check_system_health", description: "Pre-flight check: verify OpenRouter, Unipile/LinkedIn, rate limits, and campaign config are all working before executing tasks", parameters: { type: "object", properties: {} } } },
   ];
 }
 
@@ -547,6 +551,47 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
 
       await logActivity(userId, "delete_contacts", { level: "info", message: `Deleted ${description}` });
       return { success: true, message: `Deleted ${description}.` };
+    }
+
+    // ===== SELF-HEALING TOOLS =====
+    case "diagnose_and_fix": {
+      const errorMsg = (args.error_message as string) || "Unknown error";
+      const failedTool = (args.failed_tool as string) || "unknown";
+      const context = (args.context as string) || "";
+
+      const result = await healError(errorMsg, failedTool, userId, context);
+      const d = result.diagnosis;
+
+      let message = `🔍 **Diagnosis** [${d.category.toUpperCase()}]\n${d.rootCause}`;
+      if (result.fixApplied && result.fixResult) {
+        message += `\n\n🔧 **Auto-fix applied:** ${result.fixResult}`;
+      }
+      if (d.userAction) {
+        message += `\n\n👉 **Action needed:** ${d.userAction}`;
+      }
+      if (result.retryRecommended) {
+        message += `\n\n🔄 Retry recommended.`;
+      }
+
+      return {
+        success: true,
+        data: { category: d.category, autoFixable: d.autoFixable, fixApplied: result.fixApplied, retryRecommended: result.retryRecommended },
+        message,
+      };
+    }
+
+    case "check_system_health": {
+      const health = await checkSystemHealth(userId);
+      const icon = health.overall === "healthy" ? "✅" : health.overall === "degraded" ? "⚠️" : "❌";
+      const lines = health.checks.map(c => {
+        const ci = c.status === "ok" ? "✅" : c.status === "warning" ? "⚠️" : "❌";
+        return `${ci} **${c.service}**: ${c.message}`;
+      });
+      return {
+        success: true,
+        data: health,
+        message: `${icon} System: **${health.overall.toUpperCase()}**\n\n${lines.join("\n")}`,
+      };
     }
 
     default:

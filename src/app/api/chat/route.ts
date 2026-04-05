@@ -4,8 +4,9 @@ import { prisma } from "@/lib/prisma";
 import { generateGreeting } from "@/lib/agent";
 import { logActivity } from "@/lib/activity-log";
 import { decrypt } from "@/lib/encryption";
-import { getToolDefinitions, executeTool } from "@/lib/agent-tools";
+import { getToolDefinitions, executeTool, ToolResult } from "@/lib/agent-tools";
 import { clearAgentStatus } from "@/lib/agent-status";
+import { diagnoseError } from "@/lib/self-heal";
 
 export const maxDuration = 120;
 
@@ -124,9 +125,46 @@ export async function POST(request: Request) {
               send("thinking", `Executing: ${toolName}...`);
 
               const args = JSON.parse(tc.function.arguments || "{}");
-              const result = await executeTool(tc.function.name, args, user.id);
+              let result: ToolResult = await executeTool(tc.function.name, args, user.id);
 
-              send("thinking", `✓ ${result.message.substring(0, 120)}`);
+              // ===== SELF-HEALING: auto-diagnose on failure =====
+              if (!result.success && tc.function.name !== "diagnose_and_fix") {
+                send("thinking", `⚠️ ${toolName} failed. Diagnosing...`);
+                const diagnosis = diagnoseError(result.message, tc.function.name);
+
+                if (diagnosis.autoFixable && diagnosis.fixAction === "wait_and_retry") {
+                  // Auto-retry after delay for rate limits and network errors
+                  send("thinking", `🔧 Rate limit detected. Waiting 30s before retry...`);
+                  await new Promise(r => setTimeout(r, 30000));
+                  const retry = await executeTool(tc.function.name, args, user.id);
+                  if (retry.success) {
+                    result = retry;
+                    send("thinking", `✅ Retry succeeded after auto-heal.`);
+                  } else {
+                    // Attach diagnosis to the result so the agent can explain
+                    result = { ...result, message: `${result.message}\n\n🔍 Diagnosis [${diagnosis.category}]: ${diagnosis.rootCause}${diagnosis.userAction ? `\n👉 ${diagnosis.userAction}` : ""}` };
+                  }
+                } else if (diagnosis.autoFixable && diagnosis.fixAction === "retry_after_delay") {
+                  send("thinking", `🔧 Network issue. Retrying in 5s...`);
+                  await new Promise(r => setTimeout(r, 5000));
+                  const retry = await executeTool(tc.function.name, args, user.id);
+                  if (retry.success) {
+                    result = retry;
+                    send("thinking", `✅ Retry succeeded.`);
+                  } else {
+                    result = { ...result, message: `${result.message}\n\n🔍 Diagnosis [${diagnosis.category}]: ${diagnosis.rootCause}${diagnosis.userAction ? `\n👉 ${diagnosis.userAction}` : ""}` };
+                  }
+                } else if (diagnosis.autoFixable && diagnosis.fixAction === "retry") {
+                  send("thinking", `🔧 Transient error. Retrying...`);
+                  const retry = await executeTool(tc.function.name, args, user.id);
+                  result = retry.success ? retry : { ...result, message: `${result.message}\n\n🔍 Diagnosis: ${diagnosis.rootCause}` };
+                } else {
+                  // Non-auto-fixable: enrich the error with diagnosis info
+                  result = { ...result, message: `${result.message}\n\n🔍 Diagnosis [${diagnosis.category}]: ${diagnosis.rootCause}${diagnosis.userAction ? `\n👉 ${diagnosis.userAction}` : ""}` };
+                }
+              }
+
+              send("thinking", `${result.success ? "✓" : "⚠️"} ${result.message.substring(0, 120)}`);
               messages.push({ role: "tool", content: JSON.stringify(result), tool_call_id: tc.id });
             }
             continue;
@@ -211,6 +249,11 @@ ${knowledge ? `KNOWLEDGE:\n${knowledge}\n` : ""}
 TOOLS: Real execution tools. discover_prospects SEARCHES LinkedIn. send_invites SENDS via LinkedIn.
 
 RATE LIMITS: Auto-enforced (15 invites/day, 60/week). Check with get_usage_limits.
+
+SELF-HEALING: If a tool fails, errors are auto-diagnosed with root cause and fix instructions. You can also:
+- Call check_system_health BEFORE starting work to verify all services are operational.
+- Call diagnose_and_fix explicitly for any error you encounter.
+Always explain errors clearly and guide the user to fix config issues.
 
 Be concise. Use tools proactively. Report results clearly. When user corrects you, save with learn().`;
 }
