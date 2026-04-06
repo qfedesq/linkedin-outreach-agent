@@ -45,22 +45,30 @@ export async function GET(request: NextRequest) {
     ];
   }
 
-  const queryOpts: Record<string, unknown> = {
+  const skip = (page - 1) * limit;
+
+  const contacts = await prisma.contact.findMany({
     where,
     orderBy: { createdAt: "desc" },
-    skip: (page - 1) * limit,
+    skip,
     take: limit,
-  };
+  });
+
+  // For global view, attach user info
+  let enrichedContacts = contacts;
   if (global) {
-    queryOpts.include = { user: { select: { name: true, email: true } } };
+    const userIds = [...new Set(contacts.map(c => c.userId))];
+    const users = await prisma.user.findMany({
+      where: { id: { in: userIds } },
+      select: { id: true, name: true, email: true },
+    });
+    const userMap = new Map(users.map(u => [u.id, { name: u.name, email: u.email }]));
+    enrichedContacts = contacts.map(c => ({ ...c, user: userMap.get(c.userId) || null })) as typeof contacts;
   }
 
-  const [contacts, total] = await Promise.all([
-    prisma.contact.findMany(queryOpts as Parameters<typeof prisma.contact.findMany>[0]),
-    prisma.contact.count({ where }),
-  ]);
+  const total = await prisma.contact.count({ where });
 
-  return NextResponse.json({ contacts, total, page, limit });
+  return NextResponse.json({ contacts: enrichedContacts, total, page, limit });
 }
 
 export async function POST(request: Request) {
