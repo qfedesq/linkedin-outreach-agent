@@ -194,7 +194,14 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
     case "score_contacts": {
       if (!settings?.openrouterApiKey) return { success: false, message: "OpenRouter not configured." };
       progress("Loading unscored contacts...");
-      const contacts = await prisma.contact.findMany({ where: { userId, fitRationale: null }, take: (args.limit as number) || 10 });
+
+      // Hard cap: max 15 per call to avoid Vercel timeout (each takes ~2-5s LLM call)
+      const SCORE_MAX = 15;
+      const requestedLimit = (args.limit as number) || 10;
+      const effectiveLimit = Math.min(requestedLimit, SCORE_MAX);
+
+      const totalUnscored = await prisma.contact.count({ where: { userId, fitRationale: null } });
+      const contacts = await prisma.contact.findMany({ where: { userId, fitRationale: null }, take: effectiveLimit });
       if (contacts.length === 0) return { success: true, message: "All contacts are already scored." };
 
       // Build a cache of campaign ICP definitions
@@ -222,12 +229,19 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
       }
 
       const results = [];
+      const startTime = Date.now();
       for (const c of contacts) {
+        // Time guard: bail if approaching 80s to leave room for the LLM final response
+        if (Date.now() - startTime > 80000) {
+          progress(`Time limit approaching. Stopping after ${results.length} contacts.`);
+          break;
+        }
+
         const text = [`Name: ${c.name}`, c.position && `Position: ${c.position}`, c.company && `Company: ${c.company}`].filter(Boolean).join("\n");
         try {
-          progress(`Scoring ${c.name}...`);
+          progress(`Scoring ${c.name} (${results.length + 1}/${contacts.length})...`);
           const campaignIcp = c.campaignId ? campaignIcpCache.get(c.campaignId) : null;
-          if (!campaignIcp) continue; // Skip — already validated above but safety check
+          if (!campaignIcp) continue;
           const icpPrompt = getIcpScoringPrompt(campaignIcp);
           const resp = await callLLM(icpPrompt, text, settings.openrouterApiKey, settings.preferredModel);
           const parsed = JSON.parse(resp.trim());
@@ -236,14 +250,17 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
         } catch { results.push(`${c.name}: scoring failed`); }
       }
 
-      await logActivity(userId, "score_contact", { level: "success", message: `Scored ${results.length} contacts` });
-      return { success: true, data: results, message: `Scored ${results.length} contacts:\n${results.join("\n")}` };
+      const remaining = totalUnscored - results.length;
+      await logActivity(userId, "score_contact", { level: "success", message: `Scored ${results.length} contacts (${remaining} remaining)` });
+      return { success: true, data: results, message: `Scored ${results.length} contacts:\n${results.join("\n")}${remaining > 0 ? `\n\n${remaining} contacts still unscored. Call score_contacts again to continue.` : ""}` };
     }
 
     case "prepare_invites": {
       if (!settings?.openrouterApiKey) return { success: false, message: "OpenRouter not configured." };
       progress("Preparing personalized invite messages via LLM...");
-      const maxBatch = (args.count as number) || 10;
+      // Hard cap: max 10 per call to avoid Vercel timeout
+      const PREPARE_MAX = 10;
+      const maxBatch = Math.min((args.count as number) || 10, PREPARE_MAX);
 
       // Validate campaign_id — resolve name to ID if needed
       let prepCampaignId = args.campaign_id as string | undefined;
@@ -274,8 +291,14 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
       const userName = (await prisma.user.findUnique({ where: { id: userId } }))?.name || "the outreach team";
       const batch = await prisma.inviteBatch.create({ data: { userId } });
       const items = [];
+      const prepStartTime = Date.now();
 
       for (const c of contacts) {
+        // Time guard
+        if (Date.now() - prepStartTime > 80000) {
+          progress(`Time limit approaching. Prepared ${items.length} invites so far.`);
+          break;
+        }
         const userPrompt = [`Name: ${c.name}`, c.position && `Position: ${c.position}`, c.company && `Company: ${c.company}`, c.fitRationale && `Fit: ${c.fitRationale}`].filter(Boolean).join("\n");
         let msg = "";
         let campCtx: CampaignContext = { userName, campaignName: "Outreach" };

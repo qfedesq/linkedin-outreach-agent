@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version increments by +0.1 on every merge to `main`.
 
+## [1.1.8] - 2026-04-06
+
+### Fixed
+- **CRITICAL: score_contacts timeout killing the function**. Diego's "Score & prepare 10 LST" triggered scoring of 56 contacts (56 sequential LLM calls = ~3-5min). Vercel's 2-min limit killed the function and user got no response. Fix: hard cap of 15 contacts per score_contacts call + 80-second time guard that bails with partial results. Returns "N contacts still unscored, call again to continue."
+- `prepare_invites`: same hard cap (10) + time guard.
+- Progress shows `Scoring X (3/15)...` so user sees exactly where it is.
+
 ## [1.1.7] - 2026-04-06
 
 ### Changed
