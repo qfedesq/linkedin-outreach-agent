@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version increments by +0.1 on every merge to `main`.
 
+## [1.2.0] - 2026-04-06
+
+### Added
+- **Global contacts view**: Contacts page now shows ALL users' contacts with an Owner column identifying who owns each contact. Sortable by owner. User info (name, email) included from DB join.
+- **Cross-user contact dedup**: Before sending invites, checks if ANY other user in the system has already contacted the same LinkedIn profile (INVITED/CONNECTED/FOLLOWED_UP/REPLIED). Blocks the invite and shows who already contacted them. Same check during discovery — prevents adding contacts already being outreached by another user.
+
+### Changed
+- `checkGlobalDuplicate()` function added to contact-dedup.ts for cross-user checks.
+- `createContactSafe()` now blocks contacts already contacted by other users.
+- `send_invites` runs cross-user dedup before each invite.
+- Contacts API supports `?global=true` to return all users' contacts with user info.
+
 ## [1.1.9] - 2026-04-06
 
 ### Added

@@ -5,7 +5,7 @@ import { createLinkedIn } from "@/lib/linkedin-provider";
 import { logActivity } from "@/lib/activity-log";
 import { setAgentStatus } from "@/lib/agent-status";
 import { canPerformAction, canInviteContact, canFollowupContact, humanDelay, getUsageSummary } from "@/lib/linkedin-limits";
-import { createContactSafe } from "@/lib/contact-dedup";
+import { createContactSafe, checkGlobalDuplicate } from "@/lib/contact-dedup";
 import { diagnoseError, healError, checkSystemHealth } from "@/lib/self-heal";
 
 export interface ToolResult {
@@ -365,6 +365,18 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
           await prisma.inviteBatchItem.update({ where: { id: item.id }, data: { sent: true, sendResult: `skipped: ${contactCheck.reason}` } });
           blocked++;
           continue;
+        }
+
+        // Cross-user dedup: check if another user already contacted this person
+        if (contact.linkedinUrl) {
+          const globalCheck = await checkGlobalDuplicate(contact.linkedinUrl, userId);
+          if (globalCheck.contacted) {
+            await prisma.inviteBatchItem.update({ where: { id: item.id }, data: { sent: true, sendResult: `skipped: already contacted by ${globalCheck.by?.userName}` } });
+            progress(`Skipped ${contact.name}: already contacted by ${globalCheck.by?.userName} (${globalCheck.by?.status})`);
+            await logActivity(userId, "send_invite", { level: "warning", message: `${contact.name}: skipped — already ${globalCheck.by?.status} by ${globalCheck.by?.userName}`, contactId: contact.id, success: true });
+            blocked++;
+            continue;
+          }
         }
 
         // Get Unipile provider_id — must be Unipile's format, NOT LinkedIn URN

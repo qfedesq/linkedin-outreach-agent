@@ -29,7 +29,11 @@ export async function GET(request: NextRequest) {
 
   const campaignId = searchParams.get("campaignId");
 
-  const where: Record<string, unknown> = { userId: user.id };
+  const global = searchParams.get("global") === "true";
+
+  // Global view: all users' contacts (for the contacts page)
+  // Regular view: only current user's contacts (for agent tools, stats, etc.)
+  const where: Record<string, unknown> = global ? {} : { userId: user.id };
   if (status) where.status = status;
   if (fit) where.profileFit = fit;
   if (campaignId) where.campaignId = campaignId;
@@ -41,13 +45,18 @@ export async function GET(request: NextRequest) {
     ];
   }
 
+  const queryOpts: Record<string, unknown> = {
+    where,
+    orderBy: { createdAt: "desc" },
+    skip: (page - 1) * limit,
+    take: limit,
+  };
+  if (global) {
+    queryOpts.include = { user: { select: { name: true, email: true } } };
+  }
+
   const [contacts, total] = await Promise.all([
-    prisma.contact.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      skip: (page - 1) * limit,
-      take: limit,
-    }),
+    prisma.contact.findMany(queryOpts as Parameters<typeof prisma.contact.findMany>[0]),
     prisma.contact.count({ where }),
   ]);
 

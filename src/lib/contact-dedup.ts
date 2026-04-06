@@ -24,6 +24,43 @@ export async function checkDuplicate(
 }
 
 /**
+ * Check if ANY user in the system has already contacted this LinkedIn profile.
+ * Used before sending invites/messages to prevent multiple users reaching out to the same person.
+ * Returns the contact owner info if found.
+ */
+export async function checkGlobalDuplicate(
+  linkedinUrl: string,
+  excludeUserId?: string,
+): Promise<{ contacted: boolean; by?: { userId: string; userName: string; status: string; campaignId: string | null } }> {
+  const normalized = linkedinUrl.toLowerCase().replace(/\/$/, "").split("?")[0]
+    .replace(/^https?:\/\/(www\.)?linkedin\.com/, "https://www.linkedin.com");
+
+  const existing = await prisma.contact.findFirst({
+    where: {
+      linkedinUrl: normalized,
+      status: { in: ["INVITED", "CONNECTED", "FOLLOWED_UP", "REPLIED", "MEETING_BOOKED"] },
+      ...(excludeUserId ? { userId: { not: excludeUserId } } : {}),
+    },
+    select: { id: true, userId: true, status: true, campaignId: true },
+  });
+
+  if (existing) {
+    const owner = await prisma.user.findUnique({ where: { id: existing.userId }, select: { name: true } });
+    return {
+      contacted: true,
+      by: {
+        userId: existing.userId,
+        userName: owner?.name || "another user",
+        status: existing.status,
+        campaignId: existing.campaignId,
+      },
+    };
+  }
+
+  return { contacted: false };
+}
+
+/**
  * Create a contact with dedup check. Returns the created contact or skip reason.
  */
 export async function createContactSafe(
@@ -50,12 +87,25 @@ export async function createContactSafe(
   });
 
   if (existing) {
-    // Same campaign = skip silently
     if (existing.campaignId === data.campaignId) {
       return { created: false, reason: "duplicate_same_campaign" };
     }
-    // Different campaign = block (cross-campaign dedup)
     return { created: false, reason: `exists_in_other_campaign`, contactId: existing.id };
+  }
+
+  // Cross-user check: warn if another user already contacted this person
+  const otherUser = await prisma.contact.findFirst({
+    where: {
+      linkedinUrl: normalized,
+      userId: { not: userId },
+      status: { in: ["INVITED", "CONNECTED", "FOLLOWED_UP", "REPLIED", "MEETING_BOOKED"] },
+    },
+    select: { id: true, userId: true, status: true },
+  });
+
+  if (otherUser) {
+    const owner = await prisma.user.findUnique({ where: { id: otherUser.userId }, select: { name: true } });
+    return { created: false, reason: `already_contacted_by_${owner?.name || "another user"}` };
   }
 
   try {

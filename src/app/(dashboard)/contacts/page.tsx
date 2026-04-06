@@ -15,6 +15,8 @@ interface Contact {
   company: string | null;
   linkedinUrl: string;
   profileFit: string;
+  userId: string;
+  user?: { name: string | null; email: string };
   status: string;
   inviteSentDate: string | null;
   connectedDate: string | null;
@@ -35,7 +37,7 @@ const STATUS_LABELS: Record<string, string> = {
   UNRESPONSIVE: "Unresponsive",
 };
 
-type SortField = "name" | "position" | "company" | "profileFit" | "status" | "campaign" | "source";
+type SortField = "name" | "position" | "company" | "profileFit" | "status" | "campaign" | "owner" | "source";
 type SortDir = "asc" | "desc";
 
 export default function ContactsPage() {
@@ -57,7 +59,7 @@ export default function ContactsPage() {
   const campaignMap = Object.fromEntries(campaigns.map(c => [c.id, c.name]));
 
   const fetchContacts = useCallback(async () => {
-    const params = new URLSearchParams({ page: page.toString(), limit: "50" });
+    const params = new URLSearchParams({ page: page.toString(), limit: "50", global: "true" });
     if (search) params.set("search", search);
     if (statusFilter !== "all") params.set("status", statusFilter);
     if (fitFilter !== "all") params.set("fit", fitFilter);
@@ -136,6 +138,10 @@ export default function ContactsPage() {
         va = a.campaignId ? (campaignMap[a.campaignId] || "") : "";
         vb = b.campaignId ? (campaignMap[b.campaignId] || "") : "";
         break;
+      case "owner":
+        va = a.user?.name || a.user?.email || "";
+        vb = b.user?.name || b.user?.email || "";
+        break;
       case "source": va = a.source || ""; vb = b.source || ""; break;
     }
     const cmp = va.localeCompare(vb, undefined, { sensitivity: "base" });
@@ -207,13 +213,14 @@ export default function ContactsPage() {
             <table className="table-fixed w-full text-sm">
               <thead>
                 <tr className="border-b border-border">
-                  <SortHeader field="name" label="Name" current={sortField} dir={sortDir} onSort={toggleSort} width="14%" />
-                  <SortHeader field="position" label="Position" current={sortField} dir={sortDir} onSort={toggleSort} width="22%" />
-                  <SortHeader field="company" label="Company" current={sortField} dir={sortDir} onSort={toggleSort} width="12%" />
-                  <SortHeader field="profileFit" label="Fit" current={sortField} dir={sortDir} onSort={toggleSort} width="7%" />
-                  <SortHeader field="status" label="Status" current={sortField} dir={sortDir} onSort={toggleSort} width="13%" />
-                  <SortHeader field="campaign" label="Campaign" current={sortField} dir={sortDir} onSort={toggleSort} width="14%" />
-                  <SortHeader field="source" label="Source" current={sortField} dir={sortDir} onSort={toggleSort} width="8%" />
+                  <SortHeader field="name" label="Name" current={sortField} dir={sortDir} onSort={toggleSort} width="13%" />
+                  <SortHeader field="position" label="Position" current={sortField} dir={sortDir} onSort={toggleSort} width="19%" />
+                  <SortHeader field="company" label="Company" current={sortField} dir={sortDir} onSort={toggleSort} width="10%" />
+                  <SortHeader field="profileFit" label="Fit" current={sortField} dir={sortDir} onSort={toggleSort} width="6%" />
+                  <SortHeader field="status" label="Status" current={sortField} dir={sortDir} onSort={toggleSort} width="12%" />
+                  <SortHeader field="campaign" label="Campaign" current={sortField} dir={sortDir} onSort={toggleSort} width="12%" />
+                  <SortHeader field="owner" label="Owner" current={sortField} dir={sortDir} onSort={toggleSort} width="10%" />
+                  <SortHeader field="source" label="Source" current={sortField} dir={sortDir} onSort={toggleSort} width="7%" />
                   <th className="text-xs font-medium text-muted-foreground px-3 py-2.5 text-left" style={{ width: "6%" }}>
                   </th>
                 </tr>
@@ -254,6 +261,9 @@ export default function ContactsPage() {
                     <td className="px-3 py-2 text-xs text-muted-foreground truncate" title={c.campaignId ? (campaignMap[c.campaignId] || c.campaignId) : ""}>
                       {c.campaignId ? (campaignMap[c.campaignId] || "-") : "-"}
                     </td>
+                    <td className="px-3 py-2 text-xs text-muted-foreground truncate" title={c.user?.email || ""}>
+                      {c.user?.name?.split(" ")[0] || c.user?.email?.split("@")[0] || "-"}
+                    </td>
                     <td className="px-3 py-2 text-xs text-muted-foreground truncate">{c.source || "-"}</td>
                     <td className="px-3 py-2">
                       <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleDelete(c.id)}>
@@ -264,7 +274,7 @@ export default function ContactsPage() {
                 ))}
                 {contacts.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="text-center text-muted-foreground py-12 text-sm">
+                    <td colSpan={9} className="text-center text-muted-foreground py-12 text-sm">
                       No contacts found
                     </td>
                   </tr>
