@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version increments by +0.1 on every merge to `main`.
 
+## [1.1.1] - 2026-04-06
+
+### Fixed
+- **Chat hanging on LLM call** — 171 chat messages in history caused token overflow. Reduced history from 20 to 10 messages. Added 60s timeout on all LLM fetch calls so they fail fast instead of hanging forever.
+- Timeout-specific error message: "The LLM took too long to respond. Try again."
+- Summary call also has 45s timeout.
+
 ## [1.1.0] - 2026-04-06
 
 ### Added

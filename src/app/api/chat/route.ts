@@ -49,9 +49,11 @@ export async function POST(request: Request) {
         }
 
         const systemPrompt = buildSystemPrompt(knowledgeText, autonomy, strategy, campaignContext);
+        // Limit history to last 10 messages to avoid token overflow and timeouts
+        const trimmedHistory = (history || []).slice(-10);
         const messages: Array<Record<string, unknown>> = [
           { role: "system", content: systemPrompt },
-          ...history.slice(-20),
+          ...trimmedHistory,
           { role: "user", content: message },
         ];
 
@@ -88,11 +90,12 @@ export async function POST(request: Request) {
 
           await debugLog(`Loop iter ${iterations} | messages=${messages.length}`);
 
-          // NON-STREAMING call for reliable tool handling
+          // NON-STREAMING call for reliable tool handling (60s timeout)
           const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
             method: "POST",
             headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json", "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL || "" },
             body: JSON.stringify({ model, messages, tools, tool_choice: "auto", max_tokens: 2000, temperature: 0.7 }),
+            signal: AbortSignal.timeout(60000),
           });
 
           if (!response.ok) {
@@ -106,6 +109,7 @@ export async function POST(request: Request) {
                 method: "POST",
                 headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
                 body: JSON.stringify({ model, messages, max_tokens: 2000, temperature: 0.7 }),
+                signal: AbortSignal.timeout(60000),
               });
               if (retryRes.ok) {
                 const retryData = await retryRes.json();
@@ -255,6 +259,7 @@ export async function POST(request: Request) {
               method: "POST",
               headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json", "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL || "" },
               body: JSON.stringify({ model, messages, max_tokens: 2000, temperature: 0.7 }),
+              signal: AbortSignal.timeout(45000),
             });
             if (summaryRes.ok) {
               const summaryData = await summaryRes.json();
@@ -318,10 +323,15 @@ export async function POST(request: Request) {
 
         send("done", "");
       } catch (error) {
-        send("error", (error as Error).message);
-        send("content", `Error: ${(error as Error).message}`);
+        const errMsg = (error as Error).message || "Unknown error";
+        const isTimeout = errMsg.includes("abort") || errMsg.includes("timeout") || errMsg.includes("TimeoutError");
+        const userMsg = isTimeout
+          ? "⏱️ The LLM took too long to respond (>60s). This can happen with large conversation history. Try again — the history has been trimmed automatically."
+          : `Error: ${errMsg}`;
+        send("error", userMsg);
+        send("content", userMsg);
         send("done", "");
-        await logActivity(user.id, "agent_chat", { level: "error", message: `Error: ${(error as Error).message}`, success: false });
+        await logActivity(user.id, "agent_chat", { level: "error", message: `${isTimeout ? "TIMEOUT" : "Error"}: ${errMsg}`, success: false, errorCode: isTimeout ? "timeout" : errMsg.substring(0, 50) });
       }
 
       controller.close();
