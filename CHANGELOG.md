@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version increments by +0.1 on every merge to `main`.
 
+## [1.1.0] - 2026-04-06
+
+### Added
+- **ARCHITECTURAL: Hallucination Guard** — Post-response validator scans LLM output for action claims ("sent successfully", "enviado", etc.) and cross-checks against actual tool calls. If the LLM claims an action that wasn't executed, the response is replaced with a correction showing what tools were actually called.
+- **ARCHITECTURAL: Send Intent Detection** — Detects when user says "send/dale/envía/go/hazlo" and the LLM didn't call send_invites. Automatically finds the latest pending batch and executes send_invites as a safety net.
+- Tool call tracking: every tool called during a chat turn is recorded with its result, enabling post-turn validation.
+
+### Changed
+- Minor version bump to 1.1.0 — this is an architectural change to prevent hallucinated action claims.
+
 ## [1.0.9] - 2026-04-06
 
 ### Fixed

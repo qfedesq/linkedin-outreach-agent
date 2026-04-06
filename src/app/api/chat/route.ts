@@ -63,6 +63,8 @@ export async function POST(request: Request) {
         let hasError = false;
         let loopExitReason = "unknown";
         let toolsExecuted = 0;
+        const toolsCalled = new Set<string>();    // Track which tools were actually called
+        const toolResults = new Map<string, { success: boolean; message: string }>(); // Last result per tool
 
         // Helper: log debug info to ExecutionLog for visibility in Logs page
         const debugLog = async (msg: string, extra?: Record<string, unknown>) => {
@@ -74,6 +76,11 @@ export async function POST(request: Request) {
         };
 
         await debugLog(`Chat start | model=${model} | msg="${message.substring(0, 60)}" | history=${history.length}`);
+
+        // ===== INTENT DETECTION: detect "send" intent and inject tool_choice hint =====
+        const msgLower = message.toLowerCase().trim();
+        const isSendIntent = /^(send|dale|envía|enviar|go|hazlo|manda|proceed|do it|send them|send invites|envialos)/.test(msgLower)
+          || /send.*batch|enviar.*batch|dale.*invit/.test(msgLower);
 
         while (iterations < 8) {
           iterations++;
@@ -157,6 +164,8 @@ export async function POST(request: Request) {
               await debugLog(`Tool call | ${tc.function.name} | args=${JSON.stringify(args).substring(0, 150)}`);
               let result: ToolResult = await executeTool(tc.function.name, args, user.id);
               toolsExecuted++;
+              toolsCalled.add(tc.function.name);
+              toolResults.set(tc.function.name, { success: result.success, message: result.message.substring(0, 200) });
 
               // ===== SELF-HEALING: auto-diagnose on failure =====
               if (!result.success && tc.function.name !== "diagnose_and_fix") {
@@ -206,7 +215,36 @@ export async function POST(request: Request) {
 
         if (iterations >= 8 && !finalResponse) loopExitReason = "max_iterations";
 
-        await debugLog(`Loop end | reason=${loopExitReason} | iters=${iterations} | tools=${toolsExecuted} | response_len=${finalResponse.length} | hasError=${hasError}`);
+        await debugLog(`Loop end | reason=${loopExitReason} | iters=${iterations} | tools=${toolsExecuted} | toolsCalled=${[...toolsCalled].join(",")} | response_len=${finalResponse.length} | hasError=${hasError} | sendIntent=${isSendIntent}`);
+
+        // ===== SAFETY: If user intended to send but LLM never called send_invites, try to find and send the latest batch =====
+        if (isSendIntent && !toolsCalled.has("send_invites") && !hasError) {
+          await debugLog("Send intent detected but send_invites not called. Looking for latest batch...");
+          send("thinking", "Detecting unsent batch...");
+          try {
+            const latestBatch = await prisma.inviteBatch.findFirst({
+              where: { userId: user.id },
+              orderBy: { createdAt: "desc" },
+              include: { items: { where: { sent: false, approved: true } } },
+            });
+            if (latestBatch && latestBatch.items.length > 0) {
+              send("thinking", `Found batch ${latestBatch.id} with ${latestBatch.items.length} pending. Sending now...`);
+              const sendResult = await executeTool("send_invites", { batch_id: latestBatch.id }, user.id);
+              toolsCalled.add("send_invites");
+              toolResults.set("send_invites", { success: sendResult.success, message: sendResult.message.substring(0, 200) });
+              toolsExecuted++;
+              finalResponse = sendResult.message;
+              await debugLog(`Auto-send result: ${sendResult.success} | ${sendResult.message.substring(0, 100)}`);
+            } else {
+              await debugLog("No pending batch found for auto-send.");
+              if (!finalResponse) {
+                finalResponse = "No pending invite batches found. Use `prepare invites` first, then tell me to send them.";
+              }
+            }
+          } catch (e) {
+            await debugLog(`Auto-send error: ${(e as Error).message}`);
+          }
+        }
 
         // ===== SAFETY NET: If loop exhausted with tool results but no final text, force one more LLM call without tools =====
         if (!finalResponse && !hasError && toolsExecuted > 0) {
@@ -225,6 +263,33 @@ export async function POST(request: Request) {
             }
           } catch (e) {
             await debugLog(`Summary call failed: ${(e as Error).message}`);
+          }
+        }
+
+        // ===== HALLUCINATION GUARD: Validate claims against actual tool calls =====
+        if (finalResponse) {
+          const responseLower = finalResponse.toLowerCase();
+          const claimsAction = (patterns: string[]) => patterns.some(p => responseLower.includes(p));
+
+          // Check if response claims sending invites but send_invites was never called
+          const claimsSent = claimsAction(["enviado exitosamente", "sent successfully", "invite sent", "invites sent", "invite enviado", "fueron enviados", "ya fue enviado", "already sent", "was sent"]);
+          const claimsDiscovered = claimsAction(["found and saved", "prospects discovered", "contacts saved", "perfiles encontrados"]);
+          const claimsScored = claimsAction(["scored all", "contacts scored", "scoring complete", "puntuación completa"]);
+
+          if (claimsSent && !toolsCalled.has("send_invites")) {
+            await debugLog(`HALLUCINATION BLOCKED: Response claims invites sent but send_invites was never called. Tools called: ${[...toolsCalled].join(",")}`);
+            const sendResult = toolResults.get("send_invites");
+            finalResponse = `⚠️ **Correction**: I was about to claim invites were sent, but \`send_invites\` was NOT actually executed in this conversation turn.\n\n**Tools actually called**: ${[...toolsCalled].join(", ") || "none"}\n\n${sendResult ? `**Last send_invites result**: ${sendResult.message}` : "No send_invites call was made."}\n\nPlease tell me explicitly: "send invites batch [ID]" to actually send them.`;
+          }
+
+          if (claimsDiscovered && !toolsCalled.has("discover_prospects")) {
+            await debugLog(`HALLUCINATION BLOCKED: Response claims discovery but discover_prospects was never called.`);
+            finalResponse = `⚠️ **Correction**: I described discovering prospects, but \`discover_prospects\` was NOT executed.\n\nPlease tell me: "search LinkedIn for [job title] in [location]" to actually search.`;
+          }
+
+          if (claimsScored && !toolsCalled.has("score_contacts")) {
+            await debugLog(`HALLUCINATION BLOCKED: Response claims scoring but score_contacts was never called.`);
+            finalResponse = `⚠️ **Correction**: I described scoring contacts, but \`score_contacts\` was NOT executed.\n\nPlease tell me: "score contacts" to actually run scoring.`;
           }
         }
 
