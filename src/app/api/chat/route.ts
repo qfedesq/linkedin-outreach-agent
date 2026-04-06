@@ -61,10 +61,25 @@ export async function POST(request: Request) {
         let finalResponse = "";
         let iterations = 0;
         let hasError = false;
+        let loopExitReason = "unknown";
+        let toolsExecuted = 0;
+
+        // Helper: log debug info to ExecutionLog for visibility in Logs page
+        const debugLog = async (msg: string, extra?: Record<string, unknown>) => {
+          await logActivity(user.id, "chat_debug", {
+            level: "debug",
+            message: msg,
+            ...(extra ? { request: extra } : {}),
+          });
+        };
+
+        await debugLog(`Chat start | model=${model} | msg="${message.substring(0, 60)}" | history=${history.length}`);
 
         while (iterations < 8) {
           iterations++;
           send("thinking", `Thinking... (step ${iterations})`);
+
+          await debugLog(`Loop iter ${iterations} | messages=${messages.length}`);
 
           // NON-STREAMING call for reliable tool handling
           const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -75,6 +90,7 @@ export async function POST(request: Request) {
 
           if (!response.ok) {
             const errText = await response.text().catch(() => "");
+            await debugLog(`LLM HTTP error | status=${response.status} | body=${errText.substring(0, 200)}`);
 
             // If 401 with tools, retry without tools (some keys have tool restrictions)
             if (response.status === 401 && iterations === 1) {
@@ -87,13 +103,14 @@ export async function POST(request: Request) {
               if (retryRes.ok) {
                 const retryData = await retryRes.json();
                 finalResponse = retryData.choices?.[0]?.message?.content || "";
-                if (finalResponse) break;
+                if (finalResponse) { loopExitReason = "retry_no_tools_ok"; break; }
               }
             }
 
             send("thinking", `Error: LLM returned ${response.status}`);
             send("content", `⚠️ LLM error (${response.status}): ${errText.substring(0, 150)}\n\nThis usually means the OpenRouter API key needs credits or the model is unavailable. Check Settings > OpenRouter.`);
             hasError = true;
+            loopExitReason = `llm_http_${response.status}`;
             break;
           }
 
@@ -110,9 +127,15 @@ export async function POST(request: Request) {
           }
 
           const msg = data.choices?.[0]?.message;
+          const finishReason = data.choices?.[0]?.finish_reason || "unknown";
+
+          await debugLog(`LLM response | iter=${iterations} | finish=${finishReason} | tool_calls=${msg?.tool_calls?.length || 0} | content_len=${msg?.content?.length || 0} | model=${data.model || model}`);
+
           if (!msg) {
+            await debugLog(`Empty message object from LLM | raw=${JSON.stringify(data.choices?.[0]).substring(0, 200)}`);
             send("content", "⚠️ The LLM returned an empty response. Please try again.");
             hasError = true;
+            loopExitReason = "empty_message";
             break;
           }
 
@@ -124,16 +147,24 @@ export async function POST(request: Request) {
               const toolName = tc.function.name.replace(/_/g, " ");
               send("thinking", `Executing: ${toolName}...`);
 
-              const args = JSON.parse(tc.function.arguments || "{}");
+              let args: Record<string, unknown> = {};
+              try { args = JSON.parse(tc.function.arguments || "{}"); } catch {
+                await debugLog(`Failed to parse tool args | tool=${tc.function.name} | raw=${tc.function.arguments?.substring(0, 200)}`);
+                messages.push({ role: "tool", content: JSON.stringify({ success: false, message: "Invalid tool arguments" }), tool_call_id: tc.id });
+                continue;
+              }
+
+              await debugLog(`Tool call | ${tc.function.name} | args=${JSON.stringify(args).substring(0, 150)}`);
               let result: ToolResult = await executeTool(tc.function.name, args, user.id);
+              toolsExecuted++;
 
               // ===== SELF-HEALING: auto-diagnose on failure =====
               if (!result.success && tc.function.name !== "diagnose_and_fix") {
                 send("thinking", `⚠️ ${toolName} failed. Diagnosing...`);
                 const diagnosis = diagnoseError(result.message, tc.function.name);
+                await debugLog(`Tool failed | ${tc.function.name} | error=${result.message.substring(0, 150)} | diagnosis=${diagnosis.category}/${diagnosis.fixAction}`);
 
                 if (diagnosis.autoFixable && diagnosis.fixAction === "wait_and_retry") {
-                  // Auto-retry after delay for rate limits and network errors
                   send("thinking", `🔧 Rate limit detected. Waiting 30s before retry...`);
                   await new Promise(r => setTimeout(r, 30000));
                   const retry = await executeTool(tc.function.name, args, user.id);
@@ -141,7 +172,6 @@ export async function POST(request: Request) {
                     result = retry;
                     send("thinking", `✅ Retry succeeded after auto-heal.`);
                   } else {
-                    // Attach diagnosis to the result so the agent can explain
                     result = { ...result, message: `${result.message}\n\n🔍 Diagnosis [${diagnosis.category}]: ${diagnosis.rootCause}${diagnosis.userAction ? `\n👉 ${diagnosis.userAction}` : ""}` };
                   }
                 } else if (diagnosis.autoFixable && diagnosis.fixAction === "retry_after_delay") {
@@ -159,7 +189,6 @@ export async function POST(request: Request) {
                   const retry = await executeTool(tc.function.name, args, user.id);
                   result = retry.success ? retry : { ...result, message: `${result.message}\n\n🔍 Diagnosis: ${diagnosis.rootCause}` };
                 } else {
-                  // Non-auto-fixable: enrich the error with diagnosis info
                   result = { ...result, message: `${result.message}\n\n🔍 Diagnosis [${diagnosis.category}]: ${diagnosis.rootCause}${diagnosis.userAction ? `\n👉 ${diagnosis.userAction}` : ""}` };
                 }
               }
@@ -171,7 +200,32 @@ export async function POST(request: Request) {
           }
 
           finalResponse = msg.content || "";
+          loopExitReason = finalResponse ? "final_response" : "empty_content";
           break;
+        }
+
+        if (iterations >= 8 && !finalResponse) loopExitReason = "max_iterations";
+
+        await debugLog(`Loop end | reason=${loopExitReason} | iters=${iterations} | tools=${toolsExecuted} | response_len=${finalResponse.length} | hasError=${hasError}`);
+
+        // ===== SAFETY NET: If loop exhausted with tool results but no final text, force one more LLM call without tools =====
+        if (!finalResponse && !hasError && toolsExecuted > 0) {
+          await debugLog("Forcing final LLM call without tools to get summary...");
+          send("thinking", "Generating summary...");
+          try {
+            const summaryRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+              method: "POST",
+              headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json", "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL || "" },
+              body: JSON.stringify({ model, messages, max_tokens: 2000, temperature: 0.7 }),
+            });
+            if (summaryRes.ok) {
+              const summaryData = await summaryRes.json();
+              finalResponse = summaryData.choices?.[0]?.message?.content || "";
+              await debugLog(`Summary call result | content_len=${finalResponse.length}`);
+            }
+          } catch (e) {
+            await debugLog(`Summary call failed: ${(e as Error).message}`);
+          }
         }
 
         // Stream final response with typewriter effect
@@ -185,13 +239,16 @@ export async function POST(request: Request) {
 
           await prisma.chatMessage.create({ data: { userId: user.id, role: "assistant", content: finalResponse, campaignId } });
           await logActivity(user.id, "agent_chat", { level: "success", message: `Agent: ${finalResponse.substring(0, 80)}...` });
-        } else if (!hasError) {
-          // No final response and no error was sent — show fallback
-          const msg = iterations >= 8
-            ? "I ran out of thinking steps. Check results in Contacts or Logs. Try smaller steps."
-            : "I wasn't able to generate a response. Please try again.";
-          send("content", msg);
-          await prisma.chatMessage.create({ data: { userId: user.id, role: "assistant", content: msg, campaignId } });
+        } else {
+          // ALWAYS show something — never leave the user with a blank chat
+          const fallback = iterations >= 8
+            ? `I executed ${toolsExecuted} tool(s) across ${iterations} steps but couldn't generate a final summary. Check **Contacts** and **Logs** for results. Try asking: "show me the pipeline" or "what happened?"`
+            : hasError
+              ? "An error occurred during processing. Check the error details above, or ask me: \"check system health\"."
+              : "I wasn't able to generate a response. Please try again.";
+          send("content", fallback);
+          await prisma.chatMessage.create({ data: { userId: user.id, role: "assistant", content: fallback, campaignId } });
+          await debugLog(`Fallback sent | reason=${loopExitReason}`);
         }
 
         send("done", "");

@@ -15,22 +15,20 @@ export async function GET() {
 
     const data = await res.json();
 
-    // Include all major providers — no restrictive filter
-    const PROVIDERS = [
-      "anthropic", "openai", "google", "meta", "mistral", "deepseek",
-      "qwen", "cohere", "nvidia", "microsoft", "x-ai", "moonshot", "kimi",
-      "inflection", "perplexity", "together", "fireworks", "groq",
-    ];
-
     const models = (data.data || [])
-      .filter((m: { id: string }) => {
+      .filter((m: { id: string; supported_parameters?: string[]; description?: string }) => {
+        // Only include models that explicitly support tool/function calling
+        const params = m.supported_parameters || [];
+        const supportsTools = params.includes("tools") || params.includes("tool_choice");
+
+        if (!supportsTools) return false;
+
+        // Exclude known problematic models for tool calling
         const id = m.id.toLowerCase();
-        // Include if from a known provider OR if it's a popular model name
-        return PROVIDERS.some(p => id.includes(p)) ||
-               id.includes("gpt") || id.includes("claude") || id.includes("gemini") ||
-               id.includes("llama") || id.includes("command") || id.includes("phi") ||
-               id.includes("yi-") || id.includes("wizard") || id.includes("solar") ||
-               id.includes("nemotron") || id.includes("o1") || id.includes("o3") || id.includes("o4");
+        if (id.includes("free") && id.includes("preview")) return false; // Free previews are unreliable
+        if (id.includes("instruct") && !id.includes("gpt")) return false; // Instruct models often lack tool support
+
+        return true;
       })
       .map((m: { id: string; name: string; pricing?: { prompt: string; completion: string } }) => ({
         id: m.id,

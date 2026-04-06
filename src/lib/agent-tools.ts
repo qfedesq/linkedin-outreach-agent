@@ -158,7 +158,15 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
         await logActivity(userId, "linkedin_search", { level: "success", message: `Found ${items.length}, saved ${created} new (${connected1st} already connected, ${skipped} skipped)`, success: true });
         return { success: true, data: { total: items.length, created, skipped, connected1st }, message: `Found ${items.length} profiles. Saved ${created} new contacts${connected1st > 0 ? ` (${connected1st} already connected — marked as CONNECTED)` : ""}${skipped > 0 ? ` (${skipped} duplicates skipped)` : ""}.` };
       } catch (e) {
-        return { success: false, message: `Search failed: ${(e as Error).message}` };
+        const errMsg = (e as Error).message;
+        await logActivity(userId, "linkedin_search", {
+          level: "error",
+          message: `Search failed: ${errMsg}`,
+          request: { keywords, location: location || "any", count: args.count || 25, campaign_id: args.campaign_id || null },
+          success: false,
+          errorCode: errMsg.substring(0, 50),
+        });
+        return { success: false, message: `Search failed: ${errMsg}` };
       }
     }
 
