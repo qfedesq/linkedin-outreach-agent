@@ -5,6 +5,44 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version increments by +0.1 on every merge to `main`.
 
+## [1.0.7] - 2026-04-05
+
+### Fixed
+- **CRITICAL: Unipile search 400 "Invalid parameters"** — location was sent as text string ("United States") but API expects numeric LinkedIn IDs. Now appended to keywords instead.
+
+## [1.0.6] - 2026-04-05
+
+### Changed
+- Thinking steps collapsed by default after agent responds. Toggle arrow to expand/collapse.
+
+## [1.0.5] - 2026-04-05
+
+### Fixed
+- **Chat silent failures** — user always sees a message now, never blank chat.
+- Safety net: forced final LLM call without tools when loop exhausts 8 iterations.
+
+### Added
+- Debug logging to every chat loop iteration (`chat_debug` in Logs page): model, finish_reason, tool_calls count, content length, loop exit reason.
+- Log Unipile search params (keywords, location) on failure for debugging.
+- Filter model selector to only show models with tool/function calling support.
+
+## [1.0.4] - 2026-04-05
+
+### Fixed
+- Default LLM model changed to `anthropic/claude-sonnet-4` (claude-3.5-sonnet removed from OpenRouter).
+
+## [1.0.3] - 2026-04-05
+
+### Added
+- Rebuilt admin panel: full user table (email, name, LinkedIn/OpenRouter status, campaigns, contacts, invites, connections, responses, follow-ups, chat msgs, tokens, cost).
+- Real token/cost data from ExecutionLog (replaced placeholders).
+- KPI cards, ratio cards, smart alerts, active-only filter, CSV export button.
+
+## [1.0.2] - 2026-04-05
+
+### Fixed
+- OpenRouter test button was pointing to removed Apify endpoint.
+
 ## [1.0.1] - 2026-04-05
 
 ### Added
