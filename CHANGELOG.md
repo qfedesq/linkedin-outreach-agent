@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version increments by +0.1 on every merge to `main`.
 
+## [1.1.3] - 2026-04-06
+
+### Added
+- **Auto-retry on cooldown**: When send_invites hits a cooldown (≤6 min), it now auto-waits for the remaining time and retries instead of stopping. Shows "⏱️ Auto-waiting Xs..." status. Only gives up on hard daily/weekly limits.
+
+### Verified
+- **Campaign isolation**: All campaign queries (CRUD, contacts, scoring, invites) already filter by userId. Each user only sees/uses their own campaigns.
+
 ## [1.1.2] - 2026-04-06
 
 ### Fixed

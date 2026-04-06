@@ -309,13 +309,22 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
 
       let sent = 0, failed = 0, blocked = 0;
       for (const item of items) {
-        // Check rate limits before each invite
-        const rateCheck = await canPerformAction(userId, "invite");
+        // Check rate limits before each invite — auto-wait if cooldown is short enough
+        let rateCheck = await canPerformAction(userId, "invite");
+        if (!rateCheck.allowed && rateCheck.waitMs && rateCheck.waitMs <= 360000) {
+          // Cooldown ≤ 6 minutes — auto-wait and retry
+          const waitSec = Math.ceil(rateCheck.waitMs / 1000);
+          setAgentStatus(userId, `⏱️ Cooldown active. Auto-waiting ${waitSec}s before next invite...`);
+          await logActivity(userId, "send_invite", { level: "info", message: `Auto-waiting ${waitSec}s for cooldown to expire` });
+          await new Promise(r => setTimeout(r, rateCheck.waitMs! + 2000)); // Wait + 2s buffer
+          rateCheck = await canPerformAction(userId, "invite"); // Re-check
+        }
         if (!rateCheck.allowed) {
+          // Still blocked after waiting (daily/weekly limit, not just cooldown)
           setAgentStatus(userId, `Rate limit: ${rateCheck.reason}`);
           await logActivity(userId, "send_invite", { level: "warning", message: `Stopped: ${rateCheck.reason}`, success: true });
-          const remaining = items.length - sent - failed;
-          return { success: true, data: { sent, failed, blocked: remaining, batchId }, message: `Sent ${sent} invites, then stopped: ${rateCheck.reason}. ${remaining} remaining in batch ${batchId}. ⏱️ Come back in a few minutes and say: "send invites batch ${batchId}" to continue.` };
+          const remaining = items.length - sent - failed - blocked;
+          return { success: true, data: { sent, failed, blocked: remaining, batchId }, message: `Sent ${sent} invites, then stopped: ${rateCheck.reason}. ${remaining} remaining in batch ${batchId}.` };
         }
 
         const contact = await prisma.contact.findUnique({ where: { id: item.contactId } });
