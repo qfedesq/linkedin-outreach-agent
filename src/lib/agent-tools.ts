@@ -48,7 +48,13 @@ export function getToolDefinitions() {
   ];
 }
 
-export async function executeTool(name: string, args: Record<string, unknown>, userId: string): Promise<ToolResult> {
+export type ProgressCallback = (message: string) => void;
+
+export async function executeTool(name: string, args: Record<string, unknown>, userId: string, onProgress?: ProgressCallback): Promise<ToolResult> {
+  const progress = (msg: string) => {
+    setAgentStatus(userId, msg);
+    if (onProgress) onProgress(msg);
+  };
   const settings = await getUserSettings(userId);
 
   switch (name) {
@@ -108,7 +114,7 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
       // Rate limit check — auto-wait if too fast
       const searchCheck = await canPerformAction(userId, "search");
       if (!searchCheck.allowed && searchCheck.waitMs && searchCheck.waitMs < 30000) {
-        setAgentStatus(userId, `Waiting ${Math.ceil(searchCheck.waitMs / 1000)}s before searching...`);
+        progress(`Waiting ${Math.ceil(searchCheck.waitMs / 1000)}s before searching...`);
         await new Promise(r => setTimeout(r, (searchCheck.waitMs || 20000) + 2000));
       } else if (!searchCheck.allowed) {
         return { success: false, message: `Search blocked: ${searchCheck.reason}` };
@@ -132,7 +138,7 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
         }
       }
 
-      setAgentStatus(userId, `Searching LinkedIn: "${keywords}"...`);
+      progress(`Searching LinkedIn: "${keywords}"...`);
       await logActivity(userId, "linkedin_search", { level: "info", message: `Searching: "${keywords}"${location ? ` in ${location}` : ""}` });
 
       try {
@@ -143,7 +149,7 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
           return { success: true, message: "No results found. Try different keywords." };
         }
 
-        setAgentStatus(userId, `Found ${items.length} profiles. Saving...`);
+        progress(`Found ${items.length} profiles. Saving...`);
 
         let created = 0, skipped = 0, connected1st = 0;
         for (const p of items) {
@@ -187,7 +193,7 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
 
     case "score_contacts": {
       if (!settings?.openrouterApiKey) return { success: false, message: "OpenRouter not configured." };
-      setAgentStatus(userId, "Loading unscored contacts...");
+      progress("Loading unscored contacts...");
       const contacts = await prisma.contact.findMany({ where: { userId, fitRationale: null }, take: (args.limit as number) || 10 });
       if (contacts.length === 0) return { success: true, message: "All contacts are already scored." };
 
@@ -219,7 +225,7 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
       for (const c of contacts) {
         const text = [`Name: ${c.name}`, c.position && `Position: ${c.position}`, c.company && `Company: ${c.company}`].filter(Boolean).join("\n");
         try {
-          setAgentStatus(userId, `Scoring ${c.name}...`);
+          progress(`Scoring ${c.name}...`);
           const campaignIcp = c.campaignId ? campaignIcpCache.get(c.campaignId) : null;
           if (!campaignIcp) continue; // Skip — already validated above but safety check
           const icpPrompt = getIcpScoringPrompt(campaignIcp);
@@ -236,7 +242,7 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
 
     case "prepare_invites": {
       if (!settings?.openrouterApiKey) return { success: false, message: "OpenRouter not configured." };
-      setAgentStatus(userId, "Preparing personalized invite messages via LLM...");
+      progress("Preparing personalized invite messages via LLM...");
       const maxBatch = (args.count as number) || 10;
 
       // Validate campaign_id — resolve name to ID if needed
@@ -305,7 +311,7 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
       if (items.length === 0) return { success: true, message: "No pending invites in this batch." };
 
       // Pre-send warning: TO_CONTACT in our DB doesn't guarantee no prior LinkedIn invite
-      setAgentStatus(userId, `Sending ${items.length} invite(s)... Note: some contacts may have prior LinkedIn invites.`);
+      progress(`Sending ${items.length} invite(s)...`);
 
       let sent = 0, failed = 0, blocked = 0;
       for (const item of items) {
@@ -314,14 +320,14 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
         if (!rateCheck.allowed && rateCheck.waitMs && rateCheck.waitMs <= 360000) {
           // Cooldown ≤ 6 minutes — auto-wait and retry
           const waitSec = Math.ceil(rateCheck.waitMs / 1000);
-          setAgentStatus(userId, `⏱️ Cooldown active. Auto-waiting ${waitSec}s before next invite...`);
+          progress(`⏱️ Cooldown active. Auto-waiting ${waitSec}s...`);
           await logActivity(userId, "send_invite", { level: "info", message: `Auto-waiting ${waitSec}s for cooldown to expire` });
           await new Promise(r => setTimeout(r, rateCheck.waitMs! + 2000)); // Wait + 2s buffer
           rateCheck = await canPerformAction(userId, "invite"); // Re-check
         }
         if (!rateCheck.allowed) {
           // Still blocked after waiting (daily/weekly limit, not just cooldown)
-          setAgentStatus(userId, `Rate limit: ${rateCheck.reason}`);
+          progress(`Rate limit: ${rateCheck.reason}`);
           await logActivity(userId, "send_invite", { level: "warning", message: `Stopped: ${rateCheck.reason}`, success: true });
           const remaining = items.length - sent - failed - blocked;
           return { success: true, data: { sent, failed, blocked: remaining, batchId }, message: `Sent ${sent} invites, then stopped: ${rateCheck.reason}. ${remaining} remaining in batch ${batchId}.` };
@@ -368,7 +374,7 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
         if (!providerId || providerId.startsWith("urn:")) { failed++; continue; }
 
         try {
-          setAgentStatus(userId, `Sending invite to ${contact.name}...`);
+          progress(`Sending invite to ${contact.name}...`);
           await linkedin.sendInvitation(providerId, (item.editedMessage || item.draftMessage).substring(0, 200));
           await prisma.inviteBatchItem.update({ where: { id: item.id }, data: { sent: true, sentAt: new Date(), sendResult: "success" } });
           await prisma.contact.update({ where: { id: contact.id }, data: { status: "INVITED", inviteSentDate: new Date(), connectionMessage: item.editedMessage || item.draftMessage } });
@@ -377,7 +383,7 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
 
           // Human-like delay between invites (45s ± 20%)
           if (sent < items.length) {
-            setAgentStatus(userId, `Waiting between invites... (${sent}/${items.length})`);
+            progress(`✓ Sent ${sent}/${items.length}. Waiting 45s before next...`);
             await humanDelay(45000);
           }
         } catch (e) {
@@ -493,7 +499,7 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
 
         const userPrompt = [`Name: ${c.name}`, c.position && `Position: ${c.position}`, c.company && `Company: ${c.company}`].filter(Boolean).join("\n");
         try {
-          setAgentStatus(userId, `Sending follow-up to ${c.name}...`);
+          progress(`Sending follow-up to ${c.name}...`);
           let fCtx: CampaignContext = { userName: fUserName, campaignName: "Outreach" };
           if (c.campaignId) {
             if (!fCampCache.has(c.campaignId)) {

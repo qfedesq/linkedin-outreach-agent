@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version increments by +0.1 on every merge to `main`.
 
+## [1.1.5] - 2026-04-06
+
+### Added
+- **Real-time tool progress in chat**: Tools now stream live progress updates to the chat UI via SSE. During send_invites, user sees each invite being sent, cooldown waits, 422 skips, and delays — all as thinking steps in real-time. Previously tools only wrote to an in-memory store that the chat never read.
+
+### Changed
+- `executeTool` accepts optional `ProgressCallback` that bridges tool status → SSE stream.
+- All 12 `setAgentStatus()` calls replaced with `progress()` which writes to both the in-memory store and the SSE stream.
+
 ## [1.1.4] - 2026-04-06
 
 ### Fixed

@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { generateGreeting } from "@/lib/agent";
 import { logActivity } from "@/lib/activity-log";
 import { decrypt } from "@/lib/encryption";
-import { getToolDefinitions, executeTool, ToolResult } from "@/lib/agent-tools";
+import { getToolDefinitions, executeTool, ToolResult, ProgressCallback } from "@/lib/agent-tools";
 import { clearAgentStatus } from "@/lib/agent-status";
 import { diagnoseError } from "@/lib/self-heal";
 
@@ -166,7 +166,9 @@ export async function POST(request: Request) {
               }
 
               await debugLog(`Tool call | ${tc.function.name} | args=${JSON.stringify(args).substring(0, 150)}`);
-              let result: ToolResult = await executeTool(tc.function.name, args, user.id);
+              // Pass progress callback so tools can stream real-time updates to chat
+              const toolProgress: ProgressCallback = (msg) => send("thinking", msg);
+              let result: ToolResult = await executeTool(tc.function.name, args, user.id, toolProgress);
               toolsExecuted++;
               toolsCalled.add(tc.function.name);
               toolResults.set(tc.function.name, { success: result.success, message: result.message.substring(0, 200) });
@@ -233,7 +235,7 @@ export async function POST(request: Request) {
             });
             if (latestBatch && latestBatch.items.length > 0) {
               send("thinking", `Found batch ${latestBatch.id} with ${latestBatch.items.length} pending. Sending now...`);
-              const sendResult = await executeTool("send_invites", { batch_id: latestBatch.id }, user.id);
+              const sendResult = await executeTool("send_invites", { batch_id: latestBatch.id }, user.id, (msg) => send("thinking", msg));
               toolsCalled.add("send_invites");
               toolResults.set("send_invites", { success: sendResult.success, message: sendResult.message.substring(0, 200) });
               toolsExecuted++;
