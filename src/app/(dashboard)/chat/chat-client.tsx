@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { Send, Loader2, Bot, User, Sparkles, Users, UserCheck, Inbox, Calendar, Wrench, Copy, Check } from "lucide-react";
+import { Send, Loader2, Bot, User, Sparkles, Users, UserCheck, Inbox, Calendar, Wrench, Copy, Check, ChevronRight, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface Message { role: "user" | "assistant"; content: string; thinking?: string[] }
@@ -205,15 +205,9 @@ export default function ChatPage({ campaignId }: { campaignId?: string }) {
                   <div className="w-6 h-6 rounded-md bg-muted flex items-center justify-center shrink-0 mt-0.5"><User className="h-3.5 w-3.5 text-muted-foreground" /></div>
                 )}
               </div>
-              {/* Thinking steps trail */}
+              {/* Thinking steps trail — collapsed by default */}
               {msg.thinking && msg.thinking.length > 0 && (
-                <div className="ml-8 mt-1 space-y-0.5">
-                  {msg.thinking.map((s, j) => (
-                    <div key={j} className="flex items-center gap-1.5 text-[10px] text-muted-foreground/60 font-mono">
-                      <Wrench className="h-2.5 w-2.5" /><span className="truncate">{s}</span>
-                    </div>
-                  ))}
-                </div>
+                <ThinkingSteps steps={msg.thinking} />
               )}
             </div>
           ))}
@@ -266,6 +260,31 @@ export default function ChatPage({ campaignId }: { campaignId?: string }) {
           </Button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function ThinkingSteps({ steps }: { steps: string[] }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="ml-8 mt-1">
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-1 text-[10px] text-muted-foreground/50 hover:text-muted-foreground transition-colors font-mono"
+      >
+        {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+        <Wrench className="h-2.5 w-2.5" />
+        <span>{steps.length} steps</span>
+      </button>
+      {open && (
+        <div className="mt-1 space-y-0.5 pl-1 border-l border-border/30 ml-1.5">
+          {steps.map((s, j) => (
+            <div key={j} className="flex items-center gap-1.5 text-[10px] text-muted-foreground/60 font-mono pl-2">
+              <span className="truncate">{s}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
