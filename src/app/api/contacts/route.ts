@@ -30,10 +30,12 @@ export async function GET(request: NextRequest) {
   const campaignId = searchParams.get("campaignId");
 
   const global = searchParams.get("global") === "true";
+  const filterUserId = searchParams.get("userId");
 
   // Global view: all users' contacts (for the contacts page)
   // Regular view: only current user's contacts (for agent tools, stats, etc.)
   const where: Record<string, unknown> = global ? {} : { userId: user.id };
+  if (filterUserId && global) where.userId = filterUserId;
   if (status) where.status = status;
   if (fit) where.profileFit = fit;
   if (campaignId) where.campaignId = campaignId;

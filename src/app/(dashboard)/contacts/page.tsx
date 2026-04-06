@@ -47,7 +47,9 @@ export default function ContactsPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [fitFilter, setFitFilter] = useState("all");
   const [campaignFilter, setCampaignFilter] = useState("all");
+  const [ownerFilter, setOwnerFilter] = useState("all");
   const [campaigns, setCampaigns] = useState<Array<{ id: string; name: string }>>([]);
+  const [owners, setOwners] = useState<Array<{ id: string; name: string; email: string }>>([]);
   const [page, setPage] = useState(1);
   const [sortField, setSortField] = useState<SortField>("name");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
@@ -55,6 +57,17 @@ export default function ContactsPage() {
   useEffect(() => {
     fetch("/api/campaigns").then(r => r.json()).then(d => setCampaigns(d.campaigns || [])).catch(() => {});
   }, []);
+
+  // Derive unique owners from fetched contacts
+  useEffect(() => {
+    const seen = new Map<string, { id: string; name: string; email: string }>();
+    for (const c of contacts) {
+      if (c.user && c.userId && !seen.has(c.userId)) {
+        seen.set(c.userId, { id: c.userId, name: c.user.name || c.user.email?.split("@")[0] || "Unknown", email: c.user.email || "" });
+      }
+    }
+    if (seen.size > 0) setOwners([...seen.values()]);
+  }, [contacts]);
 
   const campaignMap = Object.fromEntries(campaigns.map(c => [c.id, c.name]));
 
@@ -64,12 +77,13 @@ export default function ContactsPage() {
     if (statusFilter !== "all") params.set("status", statusFilter);
     if (fitFilter !== "all") params.set("fit", fitFilter);
     if (campaignFilter !== "all") params.set("campaignId", campaignFilter);
+    if (ownerFilter !== "all") params.set("userId", ownerFilter);
 
     const res = await fetch(`/api/contacts?${params}`);
     const data = await res.json();
     setContacts(data.contacts);
     setTotal(data.total);
-  }, [page, search, statusFilter, fitFilter, campaignFilter]);
+  }, [page, search, statusFilter, fitFilter, campaignFilter, ownerFilter]);
 
   useEffect(() => { fetchContacts(); }, [fetchContacts]);
 
@@ -204,6 +218,15 @@ export default function ContactsPage() {
               <SelectContent>
                 <SelectItem value="all">All campaigns</SelectItem>
                 {campaigns.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={ownerFilter} onValueChange={(v) => { if (v) { setOwnerFilter(v); setPage(1); } }}>
+              <SelectTrigger className="w-36 h-9 text-sm">
+                <SelectValue placeholder="Owner" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All owners</SelectItem>
+                {owners.map(o => <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
