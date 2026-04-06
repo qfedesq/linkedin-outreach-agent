@@ -176,68 +176,70 @@ export default function ContactsPage() {
           </div>
         </CardHeader>
         <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Position</TableHead>
-                <TableHead>Company</TableHead>
-                <TableHead>Fit</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Source</TableHead>
-                <TableHead className="w-[100px]">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {contacts.map((contact) => (
-                <TableRow key={contact.id}>
-                  <TableCell className="font-medium">
-                    <a
-                      href={contact.linkedinUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-1 hover:underline"
-                    >
-                      {contact.name}
-                      <ExternalLink className="h-3 w-3" />
-                    </a>
-                  </TableCell>
-                  <TableCell className="text-sm">{contact.position}</TableCell>
-                  <TableCell className="text-sm">{contact.company}</TableCell>
-                  <TableCell>
-                    <Badge variant="secondary" className={FIT_COLORS[contact.profileFit]}>{contact.profileFit}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Select value={contact.status} onValueChange={(v) => { if (v) handleStatusChange(contact.id, v); }}>
-                      <SelectTrigger className="h-7 text-xs w-32">
-                        <Badge variant="secondary" className={STATUS_COLORS[contact.status]}>
-                          {STATUS_LABELS[contact.status]}
-                        </Badge>
-                      </SelectTrigger>
-                      <SelectContent>
-                        {Object.entries(STATUS_LABELS).map(([k, v]) => (
-                          <SelectItem key={k} value={k}>{v}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{contact.source}</TableCell>
-                  <TableCell>
-                    <Button variant="ghost" size="icon" onClick={() => handleDelete(contact.id)}>
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-              {contacts.length === 0 && (
+          <div className="w-full overflow-hidden">
+            <Table className="table-fixed w-full">
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
-                    No contacts found
-                  </TableCell>
+                  <TableHead className="w-[15%]">Name</TableHead>
+                  <TableHead className="w-[28%]">Position</TableHead>
+                  <TableHead className="w-[12%]">Company</TableHead>
+                  <TableHead className="w-[8%]">Fit</TableHead>
+                  <TableHead className="w-[14%]">Status</TableHead>
+                  <TableHead className="w-[8%]">Source</TableHead>
+                  <TableHead className="w-[7%]">Actions</TableHead>
                 </TableRow>
-              )}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {contacts.map((contact) => (
+                  <TableRow key={contact.id}>
+                    <TableCell className="font-medium truncate">
+                      <a
+                        href={contact.linkedinUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1 hover:underline min-w-0"
+                      >
+                        <span className="truncate">{contact.name}</span>
+                        <ExternalLink className="h-3 w-3 shrink-0" />
+                      </a>
+                    </TableCell>
+                    <TableCell className="text-sm truncate" title={contact.position || ""}>{contact.position}</TableCell>
+                    <TableCell className="text-sm truncate" title={contact.company || ""}>{contact.company}</TableCell>
+                    <TableCell>
+                      <Badge variant="secondary" className={FIT_COLORS[contact.profileFit]}>{contact.profileFit}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Select value={contact.status} onValueChange={(v) => { if (v) handleStatusChange(contact.id, v); }}>
+                        <SelectTrigger className="h-7 text-xs">
+                          <Badge variant="secondary" className={STATUS_COLORS[contact.status]}>
+                            {STATUS_LABELS[contact.status]}
+                          </Badge>
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Object.entries(STATUS_LABELS).map(([k, v]) => (
+                            <SelectItem key={k} value={k}>{v}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground truncate">{contact.source}</TableCell>
+                    <TableCell>
+                      <Button variant="ghost" size="icon" onClick={() => handleDelete(contact.id)}>
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {contacts.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                      No contacts found
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
         </CardContent>
       </Card>
 

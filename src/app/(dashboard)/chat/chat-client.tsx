@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { Send, Loader2, Bot, User, Sparkles, Users, UserCheck, Inbox, Calendar, Wrench, Copy, Check, ChevronRight, ChevronDown } from "lucide-react";
+import { Send, Loader2, Users, UserCheck, Inbox, Calendar, Copy, Check, ChevronRight, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface Message { role: "user" | "assistant"; content: string; thinking?: string[] }
@@ -12,8 +12,8 @@ interface Stats { total: number; invited: number; connected: number; replied: nu
 const SUGGESTIONS = [
   "What should we do next?",
   "Show me the pipeline",
-  "Discover 20 CEOs in UK",
-  "Score all unscored contacts",
+  "Discover 20 prospects",
+  "Score unscored contacts",
   "Prepare invites for HIGH fit",
   "Run the daily cycle",
 ];
@@ -84,7 +84,6 @@ export default function ChatPage({ campaignId }: { campaignId?: string }) {
         return;
       }
 
-      // Read SSE stream
       const reader = res.body?.getReader();
       if (!reader) { setLoading(false); return; }
 
@@ -105,7 +104,6 @@ export default function ChatPage({ campaignId }: { campaignId?: string }) {
           if (!line.startsWith("data: ")) continue;
           try {
             const { type, data } = JSON.parse(line.substring(6));
-
             switch (type) {
               case "thinking":
                 steps.push(data);
@@ -121,7 +119,7 @@ export default function ChatPage({ campaignId }: { campaignId?: string }) {
                 break;
               case "error":
                 toast.error(data);
-                if (!fullContent) fullContent = "⚠️ " + data;
+                if (!fullContent) fullContent = data;
                 break;
               case "done":
                 break;
@@ -130,7 +128,6 @@ export default function ChatPage({ campaignId }: { campaignId?: string }) {
         }
       }
 
-      // Finalize message
       if (fullContent) {
         setMessages(prev => [...prev, { role: "assistant", content: fullContent, thinking: steps.length > 0 ? steps : undefined }]);
         setHistory(prev => [...prev, { role: "user", content: msg }, { role: "assistant", content: fullContent }].slice(-30));
@@ -158,90 +155,77 @@ export default function ChatPage({ campaignId }: { campaignId?: string }) {
 
   return (
     <div className="flex flex-col h-[calc(100vh-48px)] -mx-6 -mt-6">
-      {/* Stats header */}
-      <div className="flex items-center h-10 px-6 border-b border-border bg-card/50 gap-6 shrink-0">
+      {/* Stats bar */}
+      <div className="flex items-center h-9 px-6 border-b border-border bg-card/30 gap-5 shrink-0">
         {statItems.map(s => (
-          <div key={s.label} className="flex items-center gap-1.5">
-            <s.icon className="h-3 w-3 text-muted-foreground" />
-            <span className="font-mono text-xs font-bold">{s.value}</span>
-            <span className="text-[10px] text-muted-foreground">{s.label}</span>
+          <div key={s.label} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <s.icon className="h-3 w-3" />
+            <span className="font-mono font-semibold text-foreground">{s.value}</span>
+            <span>{s.label}</span>
           </div>
         ))}
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-6">
-        <div className="max-w-3xl mx-auto py-4 space-y-4">
+      <div className="flex-1 overflow-y-auto">
+        <div className="max-w-3xl mx-auto px-6 py-6 space-y-5">
           {messages.length === 0 && !loading && (
-            <div className="flex flex-col items-center justify-center py-16 text-center">
-              <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
-                <Sparkles className="h-7 w-7 text-primary" />
-              </div>
-              <h2 className="text-lg font-bold mb-1">Outreach Agent</h2>
-              <p className="text-xs text-muted-foreground mb-6 max-w-sm">Tell me what to do. I execute in real-time.</p>
-              <div className="grid grid-cols-2 gap-2 w-full max-w-md">
+            <div className="flex flex-col items-center justify-center py-20 text-center">
+              <h2 className="text-base font-semibold text-foreground mb-1">Outreach Agent</h2>
+              <p className="text-sm text-muted-foreground mb-8">Tell me what to do. I execute in real-time.</p>
+              <div className="grid grid-cols-2 gap-2 w-full max-w-lg">
                 {SUGGESTIONS.map(s => (
-                  <button key={s} onClick={() => sendMessage(s)} className="text-left text-[11px] p-2.5 rounded-lg border border-border hover:bg-accent transition-colors text-muted-foreground hover:text-foreground">{s}</button>
+                  <button key={s} onClick={() => sendMessage(s)} className="text-left text-sm px-3 py-2 rounded-lg border border-border hover:bg-accent/50 transition-colors text-muted-foreground hover:text-foreground">{s}</button>
                 ))}
               </div>
             </div>
           )}
 
           {messages.map((msg, i) => (
-            <div key={i}>
-              <div className={cn("flex gap-2.5 group", msg.role === "user" ? "justify-end" : "")}>
-                {msg.role === "assistant" && (
-                  <div className="w-6 h-6 rounded-md bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
-                    <Bot className="h-3.5 w-3.5 text-primary" />
+            <div key={i} className={cn("group", msg.role === "user" ? "flex justify-end" : "")}>
+              {msg.role === "user" ? (
+                <div className="flex items-start gap-2 max-w-[80%]">
+                  <div className="bg-primary text-primary-foreground rounded-2xl rounded-tr-sm px-4 py-2.5 text-sm">
+                    {msg.content}
                   </div>
-                )}
-                <div className={cn("max-w-[85%] rounded-lg px-3 py-2 text-[13px] leading-relaxed relative", msg.role === "user" ? "bg-primary text-primary-foreground" : "bg-card border border-border")}>
-                  {msg.role === "assistant" ? (
-                    <div className="prose prose-sm prose-invert max-w-none [&_p]:my-1 [&_ul]:my-1 [&_li]:my-0 [&_strong]:text-foreground [&_code]:text-[11px] [&_code]:bg-muted [&_code]:px-1 [&_code]:rounded" dangerouslySetInnerHTML={{ __html: fmtMd(msg.content) }} />
-                  ) : <span>{msg.content}</span>}
+                  <CopyButton text={msg.content} />
                 </div>
-                <CopyButton text={msg.content} />
-                {msg.role === "user" && (
-                  <div className="w-6 h-6 rounded-md bg-muted flex items-center justify-center shrink-0 mt-0.5"><User className="h-3.5 w-3.5 text-muted-foreground" /></div>
-                )}
-              </div>
-              {/* Thinking steps trail — collapsed by default */}
-              {msg.thinking && msg.thinking.length > 0 && (
-                <ThinkingSteps steps={msg.thinking} />
+              ) : (
+                <div className="space-y-1">
+                  {/* Thinking steps — collapsed by default after response */}
+                  {msg.thinking && msg.thinking.length > 0 && (
+                    <TaskGroup steps={msg.thinking} />
+                  )}
+                  {/* Response */}
+                  <div className="flex items-start gap-2">
+                    <div className="text-sm text-foreground leading-relaxed max-w-none prose-agent" dangerouslySetInnerHTML={{ __html: fmtMd(msg.content) }} />
+                    <CopyButton text={msg.content} />
+                  </div>
+                </div>
               )}
             </div>
           ))}
 
-          {/* Live streaming content */}
+          {/* Live streaming */}
           {loading && (
-            <div>
-              {/* Thinking steps (live) */}
+            <div className="space-y-1">
+              {/* Live thinking steps */}
               {thinkingSteps.length > 0 && (
-                <div className="ml-8 mb-2 space-y-0.5">
-                  {thinkingSteps.map((s, i) => (
-                    <div key={i} className="flex items-center gap-1.5 text-[10px] text-primary/60 font-mono animate-in fade-in">
-                      <Wrench className="h-2.5 w-2.5" /><span>{s}</span>
-                    </div>
-                  ))}
-                </div>
+                <LiveTaskGroup steps={thinkingSteps} />
               )}
 
               {/* Streaming response */}
-              <div className="flex gap-2.5">
-                <div className="w-6 h-6 rounded-md bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
-                  <Bot className="h-3.5 w-3.5 text-primary animate-pulse" />
+              {streamingContent ? (
+                <div className="text-sm text-foreground leading-relaxed prose-agent">
+                  <span dangerouslySetInnerHTML={{ __html: fmtMd(streamingContent) }} />
+                  <span className="inline-block w-[2px] h-[14px] bg-foreground/70 animate-pulse ml-0.5 align-middle" />
                 </div>
-                <div className="max-w-[85%] rounded-lg px-3 py-2 text-[13px] leading-relaxed bg-card border border-border">
-                  {streamingContent ? (
-                    <div className="prose prose-sm prose-invert max-w-none [&_p]:my-1 [&_strong]:text-foreground" dangerouslySetInnerHTML={{ __html: fmtMd(streamingContent) }} />
-                  ) : (
-                    <span className="text-muted-foreground flex items-center gap-2">
-                      <Loader2 className="h-3 w-3 animate-spin" />Working...
-                    </span>
-                  )}
-                  <span className="inline-block w-0.5 h-4 bg-primary animate-pulse ml-0.5" />
+              ) : !thinkingSteps.length ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  <span>Thinking...</span>
                 </div>
-              </div>
+              ) : null}
             </div>
           )}
 
@@ -250,12 +234,19 @@ export default function ChatPage({ campaignId }: { campaignId?: string }) {
       </div>
 
       {/* Input */}
-      <div className="border-t border-border bg-background px-6 py-2.5 shrink-0">
-        <div className="max-w-3xl mx-auto flex gap-2">
-          <textarea ref={inputRef} value={input} onChange={e => setInput(e.target.value)} onKeyDown={handleKeyDown}
-            placeholder="Tell the agent what to do... (Enter to send)" disabled={loading}
-            className="flex-1 resize-none bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary placeholder:text-muted-foreground/40 min-h-[36px] max-h-[100px]" rows={1} />
-          <Button onClick={() => sendMessage()} disabled={loading || !input.trim()} size="icon" className="h-9 w-9 shrink-0">
+      <div className="border-t border-border bg-background px-6 py-3 shrink-0">
+        <div className="max-w-3xl mx-auto flex gap-2 items-end">
+          <textarea
+            ref={inputRef}
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Message the agent..."
+            disabled={loading}
+            className="flex-1 resize-none bg-transparent border border-border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50 min-h-[40px] max-h-[120px]"
+            rows={1}
+          />
+          <Button onClick={() => sendMessage()} disabled={loading || !input.trim()} size="icon" className="h-10 w-10 rounded-xl shrink-0">
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
           </Button>
         </div>
@@ -264,29 +255,120 @@ export default function ChatPage({ campaignId }: { campaignId?: string }) {
   );
 }
 
-function ThinkingSteps({ steps }: { steps: string[] }) {
+/* ===== Claude-style Task Group (collapsed after completion) ===== */
+function TaskGroup({ steps }: { steps: string[] }) {
   const [open, setOpen] = useState(false);
+
+  // Group steps into categories based on tool names
+  const groups = groupSteps(steps);
+  const totalSteps = steps.length;
+
   return (
-    <div className="ml-8 mt-1">
+    <div className="mb-2">
       <button
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-1 text-[10px] text-muted-foreground/50 hover:text-muted-foreground transition-colors font-mono"
+        className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors py-1"
       >
-        {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-        <Wrench className="h-2.5 w-2.5" />
-        <span>{steps.length} steps</span>
+        {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+        <span className="font-medium">{summarizeGroups(groups)}</span>
+        <span className="text-muted-foreground/50 ml-1">{totalSteps} steps</span>
       </button>
       {open && (
-        <div className="mt-1 space-y-0.5 pl-1 border-l border-border/30 ml-1.5">
+        <div className="ml-2 mt-1 border-l-2 border-border pl-3 space-y-0.5">
           {steps.map((s, j) => (
-            <div key={j} className="flex items-center gap-1.5 text-[10px] text-muted-foreground/60 font-mono pl-2">
-              <span className="truncate">{s}</span>
+            <div key={j} className="text-xs text-muted-foreground leading-relaxed py-0.5">
+              {cleanStep(s)}
             </div>
           ))}
         </div>
       )}
     </div>
   );
+}
+
+/* ===== Live Task Group (expanded, shows progress in real-time) ===== */
+function LiveTaskGroup({ steps }: { steps: string[] }) {
+  const groups = groupSteps(steps);
+
+  return (
+    <div className="mb-2 space-y-1">
+      {groups.map((g, i) => (
+        <div key={i}>
+          <div className="flex items-center gap-1.5 text-xs py-0.5">
+            {i < groups.length - 1 ? (
+              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+            ) : (
+              <Loader2 className="h-3.5 w-3.5 text-muted-foreground animate-spin" />
+            )}
+            <span className="font-medium text-foreground">{g.label}</span>
+            {g.steps.length > 1 && (
+              <span className="text-muted-foreground/50">{g.steps.length} steps</span>
+            )}
+          </div>
+          {/* Show last few steps of active group, all of completed groups */}
+          <div className="ml-2 border-l-2 border-border pl-3">
+            {(i === groups.length - 1 ? g.steps.slice(-4) : g.steps.slice(-2)).map((s, j) => (
+              <div key={j} className="text-xs text-muted-foreground leading-relaxed py-0.5">
+                {cleanStep(s)}
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ===== Helpers ===== */
+
+function groupSteps(steps: string[]): Array<{ label: string; steps: string[] }> {
+  const groups: Array<{ label: string; steps: string[] }> = [];
+  let current: { label: string; steps: string[] } | null = null;
+
+  for (const s of steps) {
+    const label = getStepGroup(s);
+    if (!current || current.label !== label) {
+      current = { label, steps: [s] };
+      groups.push(current);
+    } else {
+      current.steps.push(s);
+    }
+  }
+  return groups;
+}
+
+function getStepGroup(step: string): string {
+  const lower = step.toLowerCase();
+  if (lower.includes("executing: discover") || lower.includes("searching linkedin")) return "Discovering prospects";
+  if (lower.includes("executing: score") || lower.includes("scoring")) return "Scoring contacts";
+  if (lower.includes("executing: prepare") || lower.includes("preparing")) return "Preparing invites";
+  if (lower.includes("executing: send invite") || lower.includes("sending invite")) return "Sending invites";
+  if (lower.includes("executing: send followup") || lower.includes("sending follow")) return "Sending follow-ups";
+  if (lower.includes("executing: check") || lower.includes("checking")) return "Checking connections";
+  if (lower.includes("cooldown") || lower.includes("auto-waiting") || lower.includes("waiting")) return "Waiting for cooldown";
+  if (lower.includes("executing: diagnose") || lower.includes("diagnosing")) return "Diagnosing error";
+  if (lower.includes("executing: get") || lower.includes("pipeline") || lower.includes("usage")) return "Fetching data";
+  if (lower.includes("executing: learn") || lower.includes("knowledge")) return "Updating knowledge";
+  if (lower.includes("executing: list") || lower.includes("campaigns")) return "Listing campaigns";
+  if (lower.includes("thinking") || lower.includes("analyzing")) return "Analyzing";
+  if (lower.includes("generating summary")) return "Generating response";
+  return "Processing";
+}
+
+function summarizeGroups(groups: Array<{ label: string; steps: string[] }>): string {
+  const labels = [...new Set(groups.map(g => g.label))];
+  if (labels.length <= 2) return labels.join(", then ");
+  return `${labels[0]} and ${labels.length - 1} more tasks`;
+}
+
+function cleanStep(step: string): string {
+  // Remove emojis and excessive markers
+  return step
+    .replace(/^[^\w\s]*\s*/, "") // leading emojis/symbols
+    .replace(/[^\x20-\x7E\xA0-\xFF]/g, "") // non-ascii (emojis)
+    .replace(/^\s*(Executing|executing):\s*/i, "")
+    .replace(/^\s*(Thinking\.\.\.\s*\(step \d+\))/i, "Step $1")
+    .trim();
 }
 
 function CopyButton({ text }: { text: string }) {
@@ -296,24 +378,32 @@ function CopyButton({ text }: { text: string }) {
       await navigator.clipboard.writeText(text);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch { /* clipboard unavailable */ }
+    } catch {}
   };
   return (
     <button
       onClick={handleCopy}
-      className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0 mt-0.5 w-6 h-6 rounded-md hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground"
-      title="Copy to clipboard"
+      className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0 mt-1 w-7 h-7 rounded-md hover:bg-muted flex items-center justify-center text-muted-foreground/50 hover:text-foreground"
+      title="Copy"
     >
-      {copied ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+      {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
     </button>
   );
 }
 
 function fmtMd(t: string): string {
-  return t.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/\*(.+?)\*/g, "<em>$1</em>")
-    .replace(/`([^`]+)`/g, "<code>$1</code>").replace(/^### (.+)$/gm, "<h3>$1</h3>")
-    .replace(/^## (.+)$/gm, "<h2>$1</h2>").replace(/^# (.+)$/gm, "<h1>$1</h1>")
-    .replace(/^- (.+)$/gm, "<li>$1</li>").replace(/(<li>[\s\S]*?<\/li>)+/g, m => `<ul>${m}</ul>`)
+  return t
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*(.+?)\*/g, "<em>$1</em>")
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/^### (.+)$/gm, "<h4>$1</h4>")
+    .replace(/^## (.+)$/gm, "<h3>$1</h3>")
+    .replace(/^# (.+)$/gm, "<h2>$1</h2>")
+    .replace(/^- (.+)$/gm, "<li>$1</li>")
+    .replace(/(<li>[\s\S]*?<\/li>)+/g, m => `<ul>${m}</ul>`)
     .replace(/^\d+\. (.+)$/gm, "<li>$1</li>")
-    .replace(/\n\n/g, "</p><p>").replace(/\n/g, "<br/>").replace(/^/, "<p>").replace(/$/, "</p>");
+    .replace(/\n\n/g, "</p><p>")
+    .replace(/\n/g, "<br/>")
+    .replace(/^/, "<p>")
+    .replace(/$/, "</p>");
 }

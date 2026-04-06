@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version increments by +0.1 on every merge to `main`.
 
+## [1.1.6] - 2026-04-06
+
+### Changed
+- **Chat UI redesigned** to Claude Code style:
+  - No message bubbles for assistant — clean text on background
+  - Thinking steps grouped by task (Discovering prospects, Sending invites, etc.)
+  - Live progress shows active task with spinner, completed tasks with chevron
+  - Collapsed after completion — click to expand full step log
+  - No emojis — professional, clean, serious look
+  - User messages as subtle rounded pills
+  - Prose styling via `.prose-agent` CSS class
+- **Contacts table**: Fixed horizontal scroll — `table-fixed` with percentage widths. Position column truncates with title tooltip instead of overflowing.
+
 ## [1.1.5] - 2026-04-06
 
 ### Added
