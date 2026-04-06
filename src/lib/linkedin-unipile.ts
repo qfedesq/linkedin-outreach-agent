@@ -98,15 +98,19 @@ export class UnipileLinkedIn {
 
   /** Search LinkedIn people (via Unipile) */
   async searchPeople(keywords: string, filters?: { title?: string; location?: string; industry?: string }) {
+    // Unipile expects location/industry as LinkedIn numeric IDs, not strings.
+    // Instead, we append location text to keywords for reliable search.
+    const searchKeywords = [
+      keywords,
+      filters?.location,
+    ].filter(Boolean).join(" ");
+
     return this.request(`/linkedin/search?account_id=${this.accountId}`, {
       method: "POST",
       body: {
         api: "classic",
         category: "people",
-        keywords,
-        ...(filters?.title && { title: filters.title }),
-        ...(filters?.location && { location: filters.location }),
-        ...(filters?.industry && { industry: filters.industry }),
+        keywords: searchKeywords,
       },
     });
   }
