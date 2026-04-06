@@ -304,16 +304,34 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
           continue;
         }
 
-        // Get provider_id — look up via Unipile if we only have slug
-        let providerId = contact.linkedinProfileId || contact.linkedinEntityUrn || "";
-        if (!providerId && contact.linkedinSlug) {
-          try {
-            const profile = await linkedin.getProfile(contact.linkedinSlug);
-            providerId = profile?.provider_id || profile?.id || "";
-            if (providerId) await prisma.contact.update({ where: { id: contact.id }, data: { linkedinProfileId: providerId } });
-          } catch { providerId = contact.linkedinSlug; }
+        // Get Unipile provider_id — must be Unipile's format, NOT LinkedIn URN
+        let providerId = contact.linkedinProfileId || "";
+        const isUrn = providerId.startsWith("urn:") || providerId.includes("member:");
+        const needsLookup = !providerId || isUrn;
+
+        if (needsLookup) {
+          // Look up via Unipile to get correct provider_id
+          const lookupId = contact.linkedinSlug || providerId;
+          if (lookupId) {
+            try {
+              const profile = await linkedin.getProfile(lookupId);
+              const newId = profile?.provider_id || profile?.id || "";
+              if (newId && !newId.startsWith("urn:")) {
+                providerId = newId;
+                await prisma.contact.update({ where: { id: contact.id }, data: { linkedinProfileId: providerId } });
+              }
+            } catch {
+              // If lookup fails and we only have a URN, we can't send
+              if (isUrn) {
+                await prisma.inviteBatchItem.update({ where: { id: item.id }, data: { sent: true, sendResult: "failed: could not resolve LinkedIn profile ID" } });
+                await logActivity(userId, "send_invite", { level: "error", message: `Cannot resolve profile for ${contact.name} (stored: ${providerId.substring(0, 40)})`, contactId: contact.id, success: false });
+                failed++;
+                continue;
+              }
+            }
+          }
         }
-        if (!providerId) { failed++; continue; }
+        if (!providerId || providerId.startsWith("urn:")) { failed++; continue; }
 
         try {
           setAgentStatus(userId, `Sending invite to ${contact.name}...`);

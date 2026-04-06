@@ -42,6 +42,7 @@ interface AdminData {
   users: UserStat[];
   ratios: { inviteAcceptanceRate: string; responseRate: string; avgTokensPerUser: number };
   totalCost: number;
+  knowledge: Array<{ userEmail: string; category: string; content: string; source: string; createdAt: string }>;
   alerts: string[];
 }
 
@@ -254,6 +255,34 @@ export default function AdminPage() {
                 <div key={s.stage} className="flex items-center gap-2 bg-muted/50 rounded-lg px-3 py-2">
                   <span className="text-xs text-muted-foreground">{s.stage}</span>
                   <Badge variant="outline" className="font-mono">{s.count}</Badge>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Knowledge Base — All Users */}
+      {data.knowledge && data.knowledge.length > 0 && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Brain className="w-4 h-4" />
+                Knowledge Base — All Users ({data.knowledge.length} entries)
+              </CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {data.knowledge.map((k, i) => (
+                <div key={i} className="border border-border/50 rounded-lg p-3 hover:bg-accent/20 transition-colors">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <Badge variant="outline" className="text-[10px]">{k.category}</Badge>
+                    <span className="text-[10px] text-muted-foreground">{k.userEmail}</span>
+                    <span className="text-[10px] text-muted-foreground ml-auto">{new Date(k.createdAt).toLocaleDateString()}</span>
+                  </div>
+                  <p className="text-xs text-foreground/80 leading-relaxed">{k.content}</p>
                 </div>
               ))}
             </div>

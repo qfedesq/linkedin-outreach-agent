@@ -162,6 +162,26 @@ export async function GET(request: NextRequest) {
   if (inactiveUsers > totalUsers * 0.5) alerts.push("Más del 50% de usuarios inactivos");
   if (totalInvites === 0) alerts.push("No hay invites enviados en el período");
 
+  // Knowledge base for all users
+  const allKnowledge = await prisma.agentKnowledge.findMany({
+    orderBy: { createdAt: "desc" },
+    take: 100,
+  });
+  const knowledgeByUser = new Map<string, Array<{ category: string; content: string; source: string; createdAt: Date }>>();
+  for (const k of allKnowledge) {
+    if (!knowledgeByUser.has(k.userId)) knowledgeByUser.set(k.userId, []);
+    knowledgeByUser.get(k.userId)!.push({ category: k.category, content: k.content, source: k.source || "unknown", createdAt: k.createdAt });
+  }
+  // Map userId to email
+  const userEmailMap = new Map(users.map(u => [u.id, u.email]));
+  const knowledgeEntries = allKnowledge.map(k => ({
+    userEmail: userEmailMap.get(k.userId) || k.userId,
+    category: k.category,
+    content: k.content,
+    source: k.source || "unknown",
+    createdAt: k.createdAt,
+  }));
+
   return NextResponse.json({
     totalUsers,
     activeUsers: activeUsersCount,
@@ -182,6 +202,7 @@ export async function GET(request: NextRequest) {
       avgTokensPerUser
     },
     totalCost,
-    alerts
+    alerts,
+    knowledge: knowledgeEntries,
   });
 }

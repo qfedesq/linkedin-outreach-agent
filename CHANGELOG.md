@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version increments by +0.1 on every merge to `main`.
 
+## [1.0.9] - 2026-04-06
+
+### Fixed
+- **CRITICAL: send_invites 400 "Invalid parameters"** — stored `urn:li:member:xxx` LinkedIn URN was sent as Unipile `provider_id` which expects a different format. Now detects URNs and looks up the correct Unipile provider_id via profile lookup before sending.
+
+### Added
+- **Admin Knowledge Base**: Full knowledge base viewer in admin panel showing all entries from all users — category, content, user email, date. Enables admin to review learnings and apply improvements to the app.
+
 ## [1.0.8] - 2026-04-05
 
 ### Fixed
