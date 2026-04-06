@@ -50,16 +50,31 @@ export default function LogsPage() {
     });
   };
 
-  const exportJSON = () => {
-    const blob = new Blob([JSON.stringify(logs, null, 2)], { type: "application/json" });
-    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "logs.json"; a.click();
+  const [exporting, setExporting] = useState(false);
+
+  const exportJSON = async () => {
+    setExporting(true);
+    try {
+      const res = await fetch("/api/logs/export");
+      const data = await res.json();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `diagnostic-report-${new Date().toISOString().slice(0, 19).replace(/:/g, "-")}.json`;
+      a.click();
+    } catch {
+      alert("Export failed");
+    }
+    setExporting(false);
   };
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div><h1 className="text-2xl font-bold">Execution Logs</h1><p className="text-muted-foreground text-sm">{total} entries</p></div>
-        <Button onClick={exportJSON} variant="outline" size="sm"><Download className="mr-2 h-4 w-4" />Export JSON</Button>
+        <Button onClick={exportJSON} variant="outline" size="sm" disabled={exporting}>
+          <Download className="mr-2 h-4 w-4" />{exporting ? "Exporting..." : "Export Diagnostic Report"}
+        </Button>
       </div>
 
       <Card>
@@ -70,12 +85,15 @@ export default function LogsPage() {
               <SelectContent>
                 <SelectItem value="all">All actions</SelectItem>
                 <SelectItem value="agent_chat">Agent Chat</SelectItem>
-                <SelectItem value="apify_scrape">Apify Scrape</SelectItem>
+                <SelectItem value="chat_debug">Chat Debug</SelectItem>
+                <SelectItem value="linkedin_search">LinkedIn Search</SelectItem>
                 <SelectItem value="score_contact">Score</SelectItem>
                 <SelectItem value="prepare_invites">Prepare Invites</SelectItem>
                 <SelectItem value="send_invite">Send Invite</SelectItem>
                 <SelectItem value="send_followup">Send Follow-up</SelectItem>
-                <SelectItem value="scan_inbox">Scan Inbox</SelectItem>
+                <SelectItem value="check_connections_and_inbox">Check Connections</SelectItem>
+                <SelectItem value="llm_usage">LLM Usage</SelectItem>
+                <SelectItem value="self_heal_diagnosis">Self-Heal</SelectItem>
                 <SelectItem value="agent_learn">Agent Learn</SelectItem>
               </SelectContent>
             </Select>
