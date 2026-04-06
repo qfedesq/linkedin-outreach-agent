@@ -21,17 +21,19 @@
 import { prisma } from "@/lib/prisma";
 
 // Safe daily limits (conservative — 60% of actual limits)
+// Limits at ~50-60% of LinkedIn's real thresholds (safe for paid accounts with history)
+// LinkedIn real limits: ~80-100 invites/day, 150-200/week, 100 msgs/day, 100 profile views/day
 const SAFE_LIMITS = {
-  INVITES_PER_DAY: 15,         // Actual: ~25 free, ~40 premium
-  INVITES_PER_WEEK: 60,        // Actual: ~100 free, ~200 premium
-  MESSAGES_PER_DAY: 25,        // Actual: ~50
-  PROFILE_VIEWS_PER_DAY: 50,   // Actual: ~80-100
-  SEARCHES_PER_DAY: 20,        // Actual: ~30
-  MIN_DELAY_BETWEEN_INVITES_MS: 45000,  // 45 seconds minimum
-  MIN_DELAY_BETWEEN_MESSAGES_MS: 30000, // 30 seconds minimum
-  MIN_DELAY_BETWEEN_SEARCHES_MS: 20000, // 20 seconds minimum
-  COOLDOWN_AFTER_ERROR_MS: 300000,      // 5 minutes after any LinkedIn error
-  COOLDOWN_AFTER_429_MS: 3600000,       // 1 hour after rate limit hit
+  INVITES_PER_DAY: 40,          // Real: 80-100. Was 15 (too conservative)
+  INVITES_PER_WEEK: 120,        // Real: 150-200. Was 60
+  MESSAGES_PER_DAY: 50,         // Real: ~100. Was 25
+  PROFILE_VIEWS_PER_DAY: 80,    // Real: ~100. Was 50
+  SEARCHES_PER_DAY: 25,         // Real: ~30+. Was 20
+  MIN_DELAY_BETWEEN_INVITES_MS: 25000,  // 25s. Was 45s. Real safe: ~15s
+  MIN_DELAY_BETWEEN_MESSAGES_MS: 20000, // 20s. Was 30s. Real safe: ~10s
+  MIN_DELAY_BETWEEN_SEARCHES_MS: 10000, // 10s. Was 20s. Real safe: ~5s
+  COOLDOWN_AFTER_ERROR_MS: 180000,      // 3 minutes. Was 5 min
+  COOLDOWN_AFTER_429_MS: 1800000,       // 30 minutes. Was 1 hour
   REINVITE_COOLDOWN_DAYS: 30,           // Wait 30 days before re-inviting same person
   FOLLOWUP_MIN_DAYS: 3,                 // Wait at least 3 days after connection before follow-up
   FOLLOWUP_MAX_ATTEMPTS: 1,             // Only 1 follow-up per contact

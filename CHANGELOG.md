@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version increments by +0.1 on every merge to `main`.
 
+## [1.2.1] - 2026-04-06
+
+### Changed
+- **LinkedIn rate limits raised to 50-60% of real capacity** (was at 15-30%):
+  - Invites: 15 → 40/day, 60 → 120/week (2.7x more)
+  - Messages: 25 → 50/day (2x)
+  - Profile views: 50 → 80/day
+  - Searches: 20 → 25/day
+  - Invite delay: 45s → 25s (1.8x faster)
+  - Message delay: 30s → 20s
+  - Search delay: 20s → 10s (2x faster)
+  - Error cooldown: 5min → 3min
+  - Rate limit cooldown: 1hr → 30min
+
 ## [1.2.0] - 2026-04-06
 
 ### Added
