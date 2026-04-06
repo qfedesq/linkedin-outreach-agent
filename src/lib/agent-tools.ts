@@ -261,7 +261,7 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
         } catch {
           msg = `${c.name.split(" ")[0]} — would love to connect about ${campCtx.campaignName}. Open to a quick chat?`.substring(0, 200);
         }
-        const item = await prisma.inviteBatchItem.create({ data: { batchId: batch.id, contactId: c.id, draftMessage: msg } });
+        const item = await prisma.inviteBatchItem.create({ data: { batchId: batch.id, contactId: c.id, draftMessage: msg, approved: true } });
         items.push({ name: c.name, company: c.company, fit: c.profileFit, message: msg });
       }
 
@@ -279,6 +279,9 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
       const items = await prisma.inviteBatchItem.findMany({ where: { batchId, approved: true, sent: false, batch: { userId } }, include: { batch: true } });
       if (items.length === 0) return { success: true, message: "No pending invites in this batch." };
 
+      // Pre-send warning: TO_CONTACT in our DB doesn't guarantee no prior LinkedIn invite
+      setAgentStatus(userId, `Sending ${items.length} invite(s)... Note: some contacts may have prior LinkedIn invites.`);
+
       let sent = 0, failed = 0, blocked = 0;
       for (const item of items) {
         // Check rate limits before each invite
@@ -286,7 +289,8 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
         if (!rateCheck.allowed) {
           setAgentStatus(userId, `Rate limit: ${rateCheck.reason}`);
           await logActivity(userId, "send_invite", { level: "warning", message: `Stopped: ${rateCheck.reason}`, success: true });
-          return { success: true, data: { sent, failed, blocked: items.length - sent - failed }, message: `Sent ${sent} invites, then stopped: ${rateCheck.reason}. ${items.length - sent - failed} remaining in queue.` };
+          const remaining = items.length - sent - failed;
+          return { success: true, data: { sent, failed, blocked: remaining, batchId }, message: `Sent ${sent} invites, then stopped: ${rateCheck.reason}. ${remaining} remaining in batch ${batchId}. ⏱️ Come back in a few minutes and say: "send invites batch ${batchId}" to continue.` };
         }
 
         const contact = await prisma.contact.findUnique({ where: { id: item.contactId } });
@@ -330,6 +334,13 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
           await prisma.inviteBatchItem.update({ where: { id: item.id }, data: { sent: true, sendResult: `failed: ${errMsg.substring(0, 100)}` } });
           await logActivity(userId, "send_invite", { level: "error", message: `Failed: ${contact.name} — ${errMsg}`, success: false, errorCode: errMsg.substring(0, 50) });
 
+          // If it's a "cannot resend" / 422 error, skip this contact but continue batch
+          if (errMsg.includes("422") || errMsg.includes("Cannot resend") || errMsg.includes("already")) {
+            blocked++;
+            await logActivity(userId, "send_invite", { level: "warning", message: `Skipped ${contact.name}: LinkedIn has a pending/prior invite (422). This contact may have been invited from another tool or campaign.`, contactId: contact.id });
+            continue;
+          }
+
           // If it's a rate limit error, stop immediately
           if (errMsg.includes("429") || errMsg.includes("rate") || errMsg.includes("limit") || errMsg.includes("restrict")) {
             await logActivity(userId, "send_invite", { level: "error", message: `RATE LIMIT DETECTED — stopping all sends. ${sent} sent, ${items.length - sent - failed} remaining.`, success: false, errorCode: "rate_limit" });
@@ -338,7 +349,7 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
         }
       }
 
-      return { success: true, data: { sent, failed, blocked }, message: `Sent ${sent} invites${failed > 0 ? `, ${failed} failed` : ""}${blocked > 0 ? `, ${blocked} skipped (already contacted)` : ""}.` };
+      return { success: true, data: { sent, failed, blocked, batchId }, message: `Sent ${sent} invites${failed > 0 ? `, ${failed} failed` : ""}${blocked > 0 ? `, ${blocked} skipped (already contacted or prior LinkedIn invite)` : ""}.` };
     }
 
     case "check_connections_and_inbox": {

@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version increments by +0.1 on every merge to `main`.
 
+## [1.0.8] - 2026-04-05
+
+### Fixed
+- **"No pending invites" bug**: Batch items now auto-approved on creation so send_invites finds them.
+- **422 "Cannot resend"**: Now skips that contact and continues the batch instead of stopping.
+- **Cooldown UX**: Shows batch ID and retry instructions ("come back in X minutes and say: send invites batch XYZ").
+
+### Changed
+- **System prompt hardened** with 8 critical anti-hallucination rules from user feedback:
+  - NEVER claim success without calling the tool
+  - NEVER simulate results — always use real tool responses
+  - Report exact numbers from tool results
+  - Warn about TO_CONTACT not guaranteeing no prior LinkedIn invite
+  - Stateless: cannot wait/delay — tell user to return manually
+  - Always investigate with evidence before reporting
+- Pre-send warning in send_invites about potential prior LinkedIn invites.
+- send_invites result includes batch ID for easy retry.
+
 ## [1.0.7] - 2026-04-05
 
 ### Fixed
