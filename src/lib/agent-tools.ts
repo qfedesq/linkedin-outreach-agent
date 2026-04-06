@@ -381,17 +381,23 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
             await humanDelay(45000);
           }
         } catch (e) {
-          failed++;
           const errMsg = (e as Error).message;
-          await prisma.inviteBatchItem.update({ where: { id: item.id }, data: { sent: true, sendResult: `failed: ${errMsg.substring(0, 100)}` } });
-          await logActivity(userId, "send_invite", { level: "error", message: `Failed: ${contact.name} — ${errMsg}`, success: false, errorCode: errMsg.substring(0, 50) });
 
-          // If it's a "cannot resend" / 422 error, skip this contact but continue batch
+          // 422 "Cannot resend" — LinkedIn already has a pending invite for this contact
+          // This is NOT a rate limit — do NOT log with errorCode (would trigger cooldown)
           if (errMsg.includes("422") || errMsg.includes("Cannot resend") || errMsg.includes("already")) {
             blocked++;
-            await logActivity(userId, "send_invite", { level: "warning", message: `Skipped ${contact.name}: LinkedIn has a pending/prior invite (422). This contact may have been invited from another tool or campaign.`, contactId: contact.id });
+            await prisma.inviteBatchItem.update({ where: { id: item.id }, data: { sent: true, sendResult: "skipped: already invited on LinkedIn" } });
+            // Mark as INVITED since LinkedIn already has the pending invite
+            await prisma.contact.update({ where: { id: contact.id }, data: { status: "INVITED", inviteSentDate: new Date() } });
+            await logActivity(userId, "send_invite", { level: "warning", message: `${contact.name}: Already has pending LinkedIn invite (422). Marked as INVITED.`, contactId: contact.id, success: true }); // success: true to NOT trigger cooldown
             continue;
           }
+
+          // Real failure — log with errorCode (may trigger cooldown)
+          failed++;
+          await prisma.inviteBatchItem.update({ where: { id: item.id }, data: { sent: true, sendResult: `failed: ${errMsg.substring(0, 100)}` } });
+          await logActivity(userId, "send_invite", { level: "error", message: `Failed: ${contact.name} — ${errMsg}`, success: false, errorCode: errMsg.substring(0, 50) });
 
           // If it's a rate limit error, stop immediately
           if (errMsg.includes("429") || errMsg.includes("rate") || errMsg.includes("limit") || errMsg.includes("restrict")) {

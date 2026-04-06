@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version increments by +0.1 on every merge to `main`.
 
+## [1.1.4] - 2026-04-06
+
+### Fixed
+- **CRITICAL: 422 "Cannot resend" triggered 5-min cooldown for ALL invites**. Root cause: the 422 error was logged as `success:false, errorCode:"Unipile 422"` BEFORE the skip handler ran. `canPerformAction()` found this log and blocked all subsequent invites for 5 minutes. Fix: 422 handler now runs FIRST, logs with `success:true` (no cooldown trigger), and marks the contact as INVITED (since LinkedIn already has the pending invite). Remaining batch continues immediately.
+
 ## [1.1.3] - 2026-04-06
 
 ### Added
