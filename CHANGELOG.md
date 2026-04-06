@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version increments by +0.1 on every merge to `main`.
 
+## [1.1.7] - 2026-04-06
+
+### Changed
+- **Contacts table redesign** — Claude Code style:
+  - Sortable columns: click any header to sort asc/desc (with arrow indicators)
+  - New Campaign column shows which campaign each contact belongs to
+  - Removed all colored pills/badges — Fit shows as colored text (green/amber/gray), Status as plain text in a borderless dropdown
+  - Clean, minimal table styling matching the rest of the app
+
 ## [1.1.6] - 2026-04-06
 
 ### Changed
