@@ -30,7 +30,7 @@ model UserSettings {
   googleSheetsId        String?
   googleServiceAccount  String?
   calendarBookingUrl    String    @default("https://calendar.app.google/k8XEhkPnX6sc2GdW9")
-  preferredModel        String    @default("anthropic/claude-3.5-sonnet")
+  preferredModel        String    @default("anthropic/claude-sonnet-4")
   // Campaign configuration
   campaignName          String    @default("")
   campaignDescription   String?

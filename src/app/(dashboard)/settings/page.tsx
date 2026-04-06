@@ -29,7 +29,7 @@ export default function SettingsPage() {
   const [settings, setSettings] = useState<Settings>({
     unipileApiKey: "", unipileAccountId: "",
     openrouterApiKey: "",
-    preferredModel: "anthropic/claude-3.5-sonnet",
+    preferredModel: "anthropic/claude-sonnet-4",
     calendarBookingUrl: "https://calendar.app.google/k8XEhkPnX6sc2GdW9",
     campaignName: "",
     campaignDescription: "", icpDefinition: "", strategyNotes: "",
