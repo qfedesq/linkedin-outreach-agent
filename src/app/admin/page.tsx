@@ -3,14 +3,33 @@
 import { useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from "recharts";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Users, Activity, Send, UserCheck, MessageSquare, TrendingUp, AlertTriangle,
+  Download, Brain, DollarSign, Clock, Megaphone, CheckCircle, XCircle,
+} from "lucide-react";
 
-const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042"];
+interface UserStat {
+  email: string;
+  name: string;
+  linkedin: boolean;
+  openrouter: boolean;
+  campaigns: number;
+  contacts: number;
+  invites: number;
+  connections: number;
+  responses: number;
+  followups: number;
+  chatMsgs: number;
+  tokens: number;
+  cost: number;
+}
 
 interface AdminData {
   totalUsers: number;
   activeUsers: number;
+  inactiveUsers: number;
   totalCampaigns: number;
   totalInvites: number;
   totalConnections: number;
@@ -20,6 +39,10 @@ interface AdminData {
   tokenUsage: { month: string; tokens: number }[];
   usageTime: { totalHours: number; avgPerUser: number };
   topUsersByTime: { user: string; hours: number }[];
+  users: UserStat[];
+  ratios: { inviteAcceptanceRate: string; responseRate: string; avgTokensPerUser: number };
+  totalCost: number;
+  alerts: string[];
 }
 
 export default function AdminPage() {
@@ -27,6 +50,7 @@ export default function AdminPage() {
   const [data, setData] = useState<AdminData | null>(null);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState("month");
+  const [showActiveOnly, setShowActiveOnly] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -34,130 +58,228 @@ export default function AdminPage() {
       fetch(`/api/admin/stats?period=${period}`)
         .then(r => r.json())
         .then(setData)
-        .catch(() => alert("Error loading data"))
+        .catch(() => {})
         .finally(() => setLoading(false));
     } else {
       setLoading(false);
     }
   }, [session, period]);
 
-  if (!session) return <div>Loading session...</div>;
+  if (!session) return <div className="flex items-center justify-center h-screen text-muted-foreground">Loading session...</div>;
   if (session.user?.email !== "federico.ledesma@protofire.io") {
-    return <div className="p-4 text-center">403 Forbidden - Access denied</div>;
+    return <div className="flex items-center justify-center h-screen text-destructive font-bold">403 Forbidden</div>;
   }
+  if (loading) return <div className="flex items-center justify-center h-screen text-muted-foreground">Loading admin data...</div>;
+  if (!data) return <div className="flex items-center justify-center h-screen text-destructive">Error loading data</div>;
 
-  if (loading) return <div className="p-4">Loading admin data...</div>;
-  if (!data) return <div className="p-4">Error loading data</div>;
+  const filteredUsers = showActiveOnly
+    ? data.users.filter(u => u.contacts > 0 || u.invites > 0 || u.chatMsgs > 0)
+    : data.users;
+
+  const exportCSV = () => {
+    const headers = ["Email", "Name", "LinkedIn", "OpenRouter", "Campaigns", "Contacts", "Invites", "Connections", "Responses", "Follow-ups", "Chat Msgs", "Tokens", "Cost"];
+    const rows = data.users.map(u => [
+      u.email, u.name || "", u.linkedin ? "Yes" : "No", u.openrouter ? "Yes" : "No",
+      u.campaigns, u.contacts, u.invites, u.connections, u.responses, u.followups,
+      u.chatMsgs, u.tokens, `$${u.cost.toFixed(4)}`,
+    ]);
+    const csv = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `admin-stats-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
-    <div className="p-4 space-y-6">
-      <h1 className="text-2xl font-bold">Admin Dashboard</h1>
-
-      <div className="flex gap-4">
-        <Select value={period} onValueChange={(value) => value && setPeriod(value)}>
-          <SelectTrigger className="w-48">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="month">Último Mes</SelectItem>
-            <SelectItem value="quarter">Último Trimestre</SelectItem>
-          </SelectContent>
-        </Select>
+    <div className="min-h-screen bg-background p-6 space-y-6 max-w-7xl mx-auto">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Admin Dashboard</h1>
+          <p className="text-sm text-muted-foreground">Platform overview for @protofire.io</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <select
+            value={period}
+            onChange={e => setPeriod(e.target.value)}
+            className="text-sm border border-border rounded-lg px-3 py-1.5 bg-card"
+          >
+            <option value="month">Last 30 days</option>
+            <option value="quarter">Last 90 days</option>
+          </select>
+          <Button variant="outline" size="sm" onClick={exportCSV}>
+            <Download className="w-4 h-4 mr-1" /> Export CSV
+          </Button>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Alerts */}
+      {data.alerts.length > 0 && (
+        <Card className="border-warning/50 bg-warning/5">
+          <CardContent className="pt-4 pb-3">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="w-5 h-5 text-warning shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                {data.alerts.map((a, i) => (
+                  <p key={i} className="text-sm text-foreground">{a}</p>
+                ))}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* KPI Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
+        <KPICard icon={Users} label="Total Users" value={data.totalUsers} />
+        <KPICard icon={Activity} label="Active Users" value={data.activeUsers} accent />
+        <KPICard icon={XCircle} label="Inactive" value={data.inactiveUsers} />
+        <KPICard icon={Megaphone} label="Campaigns" value={data.totalCampaigns} />
+        <KPICard icon={Send} label="Invites Sent" value={data.totalInvites} />
+        <KPICard icon={UserCheck} label="Connections" value={data.totalConnections} />
+        <KPICard icon={MessageSquare} label="Responses" value={data.totalResponses} />
+        <KPICard icon={Clock} label="Total Hours" value={data.usageTime.totalHours} />
+        <KPICard icon={Brain} label="Avg Tokens/User" value={data.ratios.avgTokensPerUser} />
+        <KPICard icon={DollarSign} label="Total Cost" value={`$${data.totalCost.toFixed(2)}`} />
+      </div>
+
+      {/* Ratios */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <Card>
-          <CardHeader><CardTitle>Usuarios Totales</CardTitle></CardHeader>
-          <CardContent>{data.totalUsers}</CardContent>
+          <CardContent className="pt-4 pb-3 flex items-center justify-between">
+            <div>
+              <p className="text-xs text-muted-foreground uppercase tracking-wider font-bold">Invite Acceptance Rate</p>
+              <p className="text-2xl font-bold mt-1">{data.ratios.inviteAcceptanceRate}</p>
+            </div>
+            <TrendingUp className="w-8 h-8 text-primary/20" />
+          </CardContent>
         </Card>
         <Card>
-          <CardHeader><CardTitle>Usuarios Activos</CardTitle></CardHeader>
-          <CardContent>{data.activeUsers}</CardContent>
+          <CardContent className="pt-4 pb-3 flex items-center justify-between">
+            <div>
+              <p className="text-xs text-muted-foreground uppercase tracking-wider font-bold">Response Rate</p>
+              <p className="text-2xl font-bold mt-1">{data.ratios.responseRate}</p>
+            </div>
+            <MessageSquare className="w-8 h-8 text-primary/20" />
+          </CardContent>
         </Card>
         <Card>
-          <CardHeader><CardTitle>Campañas Creadas</CardTitle></CardHeader>
-          <CardContent>{data.totalCampaigns}</CardContent>
-        </Card>
-        <Card>
-          <CardHeader><CardTitle>Invites Enviados</CardTitle></CardHeader>
-          <CardContent>{data.totalInvites}</CardContent>
-        </Card>
-        <Card>
-          <CardHeader><CardTitle>Conexiones Aceptadas</CardTitle></CardHeader>
-          <CardContent>{data.totalConnections}</CardContent>
-        </Card>
-        <Card>
-          <CardHeader><CardTitle>Respuestas Recibidas</CardTitle></CardHeader>
-          <CardContent>{data.totalResponses}</CardContent>
-        </Card>
-        <Card>
-          <CardHeader><CardTitle>Horas Totales de Uso</CardTitle></CardHeader>
-          <CardContent>{data.usageTime.totalHours}</CardContent>
-        </Card>
-        <Card>
-          <CardHeader><CardTitle>Promedio Horas por Usuario</CardTitle></CardHeader>
-          <CardContent>{data.usageTime.avgPerUser}</CardContent>
+          <CardContent className="pt-4 pb-3 flex items-center justify-between">
+            <div>
+              <p className="text-xs text-muted-foreground uppercase tracking-wider font-bold">Avg Hours/User</p>
+              <p className="text-2xl font-bold mt-1">{data.usageTime.avgPerUser}h</p>
+            </div>
+            <Clock className="w-8 h-8 text-primary/20" />
+          </CardContent>
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader><CardTitle>Consumo de Tokens LLM</CardTitle></CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={data.tokenUsage}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="month" />
-                <YAxis />
-                <Tooltip />
-                <Line type="monotone" dataKey="tokens" stroke="#8884d8" />
-              </LineChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
+      {/* User Details Table */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base">User Details</CardTitle>
+            <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
+              <input
+                type="checkbox"
+                checked={showActiveOnly}
+                onChange={e => setShowActiveOnly(e.target.checked)}
+                className="rounded border-border"
+              />
+              Active only
+            </label>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-left">
+                  <th className="pb-2 pr-4 text-xs text-muted-foreground font-bold">User</th>
+                  <th className="pb-2 pr-3 text-xs text-muted-foreground font-bold text-center">LinkedIn</th>
+                  <th className="pb-2 pr-3 text-xs text-muted-foreground font-bold text-center">OpenRouter</th>
+                  <th className="pb-2 pr-3 text-xs text-muted-foreground font-bold text-center">Campaigns</th>
+                  <th className="pb-2 pr-3 text-xs text-muted-foreground font-bold text-center">Contacts</th>
+                  <th className="pb-2 pr-3 text-xs text-muted-foreground font-bold text-center">Invites</th>
+                  <th className="pb-2 pr-3 text-xs text-muted-foreground font-bold text-center">Connections</th>
+                  <th className="pb-2 pr-3 text-xs text-muted-foreground font-bold text-center">Responses</th>
+                  <th className="pb-2 pr-3 text-xs text-muted-foreground font-bold text-center">Follow-ups</th>
+                  <th className="pb-2 pr-3 text-xs text-muted-foreground font-bold text-center">Chat Msgs</th>
+                  <th className="pb-2 pr-3 text-xs text-muted-foreground font-bold text-center">Tokens</th>
+                  <th className="pb-2 text-xs text-muted-foreground font-bold text-center">Cost</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredUsers.map(u => (
+                  <tr key={u.email} className="border-b border-border/50 hover:bg-accent/30 transition-colors">
+                    <td className="py-2.5 pr-4">
+                      <div>
+                        <p className="font-medium text-foreground">{u.name || u.email.split("@")[0]}</p>
+                        <p className="text-xs text-muted-foreground">{u.email}</p>
+                      </div>
+                    </td>
+                    <td className="py-2.5 pr-3 text-center">
+                      <StatusBadge ok={u.linkedin} />
+                    </td>
+                    <td className="py-2.5 pr-3 text-center">
+                      <StatusBadge ok={u.openrouter} />
+                    </td>
+                    <td className="py-2.5 pr-3 text-center font-mono">{u.campaigns}</td>
+                    <td className="py-2.5 pr-3 text-center font-mono font-bold">{u.contacts}</td>
+                    <td className="py-2.5 pr-3 text-center font-mono">{u.invites}</td>
+                    <td className="py-2.5 pr-3 text-center font-mono">{u.connections}</td>
+                    <td className="py-2.5 pr-3 text-center font-mono">{u.responses}</td>
+                    <td className="py-2.5 pr-3 text-center font-mono">{u.followups}</td>
+                    <td className="py-2.5 pr-3 text-center font-mono">{u.chatMsgs}</td>
+                    <td className="py-2.5 pr-3 text-center font-mono">{u.tokens > 0 ? `${(u.tokens / 1000).toFixed(1)}k` : "0"}</td>
+                    <td className="py-2.5 text-center font-mono">{u.cost > 0 ? `$${u.cost.toFixed(4)}` : "$0"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
 
+      {/* Pipeline by Stage */}
+      {data.contactsByStage.length > 0 && (
         <Card>
-          <CardHeader><CardTitle>Contactos por Etapa</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="text-base">Pipeline by Stage</CardTitle></CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={data.contactsByStage}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="stage" />
-                <YAxis />
-                <Tooltip />
-                <Bar dataKey="count" fill="#82ca9d" />
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader><CardTitle>Contactos por Usuario</CardTitle></CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie data={data.contactsByUser} dataKey="count" nameKey="user" cx="50%" cy="50%" outerRadius={80} fill="#8884d8">
-                  {data.contactsByUser.map((entry, index: number) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader><CardTitle>Top Usuarios por Tiempo de Uso</CardTitle></CardHeader>
-          <CardContent>
-            <ul>
-              {data.topUsersByTime.map((u, i: number) => (
-                <li key={i}>{u.user}: {Math.round(u.hours)} horas</li>
+            <div className="flex flex-wrap gap-3">
+              {data.contactsByStage.map(s => (
+                <div key={s.stage} className="flex items-center gap-2 bg-muted/50 rounded-lg px-3 py-2">
+                  <span className="text-xs text-muted-foreground">{s.stage}</span>
+                  <Badge variant="outline" className="font-mono">{s.count}</Badge>
+                </div>
               ))}
-            </ul>
+            </div>
           </CardContent>
         </Card>
-      </div>
+      )}
     </div>
   );
+}
+
+function KPICard({ icon: Icon, label, value, accent }: { icon: React.ElementType; label: string; value: string | number; accent?: boolean }) {
+  return (
+    <Card>
+      <CardContent className="pt-4 pb-3">
+        <div className="flex items-center gap-2 mb-1">
+          <Icon className={`w-4 h-4 ${accent ? "text-primary" : "text-muted-foreground"}`} />
+          <span className="text-xs text-muted-foreground">{label}</span>
+        </div>
+        <p className={`text-xl font-bold font-mono ${accent ? "text-primary" : ""}`}>{value}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function StatusBadge({ ok }: { ok: boolean }) {
+  return ok
+    ? <CheckCircle className="w-4 h-4 text-green-500 inline-block" />
+    : <XCircle className="w-4 h-4 text-muted-foreground/40 inline-block" />;
 }

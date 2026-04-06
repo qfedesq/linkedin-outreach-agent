@@ -112,13 +112,31 @@ export async function GET(request: NextRequest) {
     const followups = await prisma.executionLog.count({
       where: { userId: user.id, action: "send_followup", success: true, createdAt: { gte: since } }
     });
-    // Tokens and chat msgs placeholder
-    const tokens = 0; // TODO: calculate from logs if available
-    const chatMsgs = 0; // TODO
-    const cost = 0; // TODO
+    // Real token/cost data from ExecutionLog (llm_usage entries)
+    const llmLogs = await prisma.executionLog.findMany({
+      where: { userId: user.id, action: "llm_usage", createdAt: { gte: since } },
+      select: { response: true },
+    });
+    let tokens = 0;
+    let cost = 0;
+    for (const log of llmLogs) {
+      try {
+        const parsed = JSON.parse(log.response || "{}");
+        tokens += parsed.total || 0;
+        cost += parsed.cost || 0;
+      } catch {}
+    }
+    // Also check global llm_usage logs (older format uses userId="global")
+    const globalLlmLogs = await prisma.executionLog.findMany({
+      where: { userId: "global", action: "llm_usage", createdAt: { gte: since } },
+      select: { response: true },
+    });
+    // Chat messages
+    const chatMsgs = await prisma.chatMessage.count({ where: { userId: user.id } });
 
     return {
       email: user.email,
+      name: user.name || "",
       linkedin: !!user.settings?.unipileApiKey,
       openrouter: !!user.settings?.openrouterApiKey,
       campaigns,
@@ -129,7 +147,7 @@ export async function GET(request: NextRequest) {
       followups,
       chatMsgs,
       tokens,
-      cost
+      cost,
     };
   }));
 
@@ -137,8 +155,9 @@ export async function GET(request: NextRequest) {
   const inactiveUsers = totalUsers - activeUsersCount;
   const inviteAcceptanceRate = totalInvites > 0 ? (totalConnections / totalInvites * 100).toFixed(2) : 0;
   const responseRate = totalInvites > 0 ? (totalResponses / totalInvites * 100).toFixed(2) : 0;
-  const avgTokensPerUser = activeUsersCount > 0 ? Math.round(1000 / activeUsersCount) : 0; // placeholder
-  const totalCost = 0; // placeholder
+  const totalTokens = userStats.reduce((sum, u) => sum + u.tokens, 0);
+  const avgTokensPerUser = activeUsersCount > 0 ? Math.round(totalTokens / activeUsersCount) : 0;
+  const totalCost = userStats.reduce((sum, u) => sum + u.cost, 0);
   const alerts = [];
   if (inactiveUsers > totalUsers * 0.5) alerts.push("Más del 50% de usuarios inactivos");
   if (totalInvites === 0) alerts.push("No hay invites enviados en el período");
