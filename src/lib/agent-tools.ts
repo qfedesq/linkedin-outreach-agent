@@ -117,6 +117,21 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
       const keywords = (args.job_title as string) || "CEO fintech";
       const location = (args.location as string) || undefined;
 
+      // Validate campaign_id — resolve name to ID if needed
+      let campaignId = (args.campaign_id as string) || null;
+      if (campaignId) {
+        const campExists = await prisma.campaign.findFirst({ where: { id: campaignId, userId } });
+        if (!campExists) {
+          // Maybe LLM passed the name instead of ID — try to find by name
+          const campByName = await prisma.campaign.findFirst({ where: { userId, name: { contains: campaignId } } });
+          if (campByName) {
+            campaignId = campByName.id;
+          } else {
+            return { success: false, message: `Campaign "${campaignId}" not found. Use list_campaigns to see available campaigns and their IDs.` };
+          }
+        }
+      }
+
       setAgentStatus(userId, `Searching LinkedIn: "${keywords}"...`);
       await logActivity(userId, "linkedin_search", { level: "info", message: `Searching: "${keywords}"${location ? ` in ${location}` : ""}` });
 
@@ -147,7 +162,7 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
             linkedinProfileId: providerId,
             connectionDegree: degree,
             source: "unipile",
-            campaignId: (args.campaign_id as string) || null,
+            campaignId: campaignId,
           });
           if (result.created) {
             created++;
@@ -223,7 +238,17 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
       if (!settings?.openrouterApiKey) return { success: false, message: "OpenRouter not configured." };
       setAgentStatus(userId, "Preparing personalized invite messages via LLM...");
       const maxBatch = (args.count as number) || 10;
-      const prepCampaignId = args.campaign_id as string | undefined;
+
+      // Validate campaign_id — resolve name to ID if needed
+      let prepCampaignId = args.campaign_id as string | undefined;
+      if (prepCampaignId) {
+        const campCheck = await prisma.campaign.findFirst({ where: { id: prepCampaignId, userId } });
+        if (!campCheck) {
+          const campByName = await prisma.campaign.findFirst({ where: { userId, name: { contains: prepCampaignId } } });
+          if (campByName) { prepCampaignId = campByName.id; }
+          else { return { success: false, message: `Campaign "${prepCampaignId}" not found. Use list_campaigns to see IDs.` }; }
+        }
+      }
 
       // Filter by campaign if provided, prioritize HIGH → MEDIUM → LOW
       const contactWhere: Record<string, unknown> = { userId, status: "TO_CONTACT" };

@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version increments by +0.1 on every merge to `main`.
 
+## [1.1.2] - 2026-04-06
+
+### Fixed
+- **Campaign ID validation**: LLM sometimes passes campaign name ("LST") instead of ID. discover_prospects and prepare_invites now validate campaign_id — if it's a name, auto-resolves to the real ID. If not found, returns clear error.
+- **Data fix**: Reassigned 56 contacts with campaignId="LST" and 10 contacts with phantom campaign ID to their correct campaign records.
+
 ## [1.1.1] - 2026-04-06
 
 ### Fixed
