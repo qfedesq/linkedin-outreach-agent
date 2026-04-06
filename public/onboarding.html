@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LinkedIn Outreach Agent — Product Tour</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg: #0e0e10;
+    --fg: #e7e4ec;
+    --muted: #9f9da1;
+    --card: #19191d;
+    --border: #2a2a30;
+    --primary: #adc6ff;
+    --primary-dim: #5a7abf;
+    --accent: #1f1f24;
+    --green: #4ade80;
+    --amber: #fbbf24;
+    --red: #f87171;
+  }
+
+  body {
+    font-family: 'Inter', -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--fg);
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+  }
+
+  .tour {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  .slide {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 4rem;
+    opacity: 0;
+    transform: translateY(30px);
+    transition: opacity 0.6s ease, transform 0.6s ease;
+    pointer-events: none;
+  }
+
+  .slide.active {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: all;
+  }
+
+  .slide-number {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem;
+    color: var(--primary-dim);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 1.5rem;
+  }
+
+  h1 {
+    font-size: 2.8rem;
+    font-weight: 700;
+    line-height: 1.15;
+    text-align: center;
+    max-width: 720px;
+    margin-bottom: 1rem;
+  }
+
+  h1 .highlight {
+    color: var(--primary);
+  }
+
+  h2 {
+    font-size: 1.6rem;
+    font-weight: 600;
+    text-align: center;
+    max-width: 600px;
+    margin-bottom: 0.75rem;
+  }
+
+  .subtitle {
+    font-size: 1rem;
+    color: var(--muted);
+    text-align: center;
+    max-width: 500px;
+    line-height: 1.6;
+    margin-bottom: 2rem;
+  }
+
+  /* Flow diagram */
+  .flow {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 2rem 0;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .flow-step {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0.75rem 1.25rem;
+    font-size: 0.85rem;
+    font-weight: 500;
+    opacity: 0;
+    transform: scale(0.9);
+    animation: flowIn 0.4s ease forwards;
+  }
+
+  .flow-step.active-step {
+    border-color: var(--primary);
+    color: var(--primary);
+  }
+
+  .flow-arrow {
+    color: var(--muted);
+    font-size: 1.2rem;
+    opacity: 0;
+    animation: flowIn 0.3s ease forwards;
+  }
+
+  @keyframes flowIn {
+    to { opacity: 1; transform: scale(1); }
+  }
+
+  /* Chat mockup */
+  .chat-mock {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    width: 560px;
+    max-width: 90vw;
+    overflow: hidden;
+    margin-top: 1.5rem;
+  }
+
+  .chat-header {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.75rem;
+    color: var(--muted);
+    display: flex;
+    gap: 1rem;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .chat-body {
+    padding: 1rem;
+    min-height: 200px;
+  }
+
+  .chat-msg {
+    margin-bottom: 0.75rem;
+    opacity: 0;
+    animation: msgIn 0.5s ease forwards;
+  }
+
+  .chat-msg.user-msg {
+    text-align: right;
+  }
+
+  .chat-msg.user-msg .msg-bubble {
+    background: var(--primary-dim);
+    color: #fff;
+    display: inline-block;
+    border-radius: 16px 16px 4px 16px;
+    padding: 0.5rem 1rem;
+    font-size: 0.85rem;
+  }
+
+  .chat-msg.agent-msg .msg-text {
+    font-size: 0.85rem;
+    line-height: 1.6;
+    color: var(--fg);
+  }
+
+  .chat-msg .task-group {
+    font-size: 0.75rem;
+    color: var(--muted);
+    margin-bottom: 0.35rem;
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+
+  .chat-msg .task-group svg {
+    width: 12px;
+    height: 12px;
+  }
+
+  @keyframes msgIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Feature cards */
+  .features {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+    max-width: 700px;
+    margin-top: 2rem;
+  }
+
+  .feature-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.25rem;
+    opacity: 0;
+    animation: cardIn 0.5s ease forwards;
+  }
+
+  .feature-card h3 {
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin-bottom: 0.35rem;
+  }
+
+  .feature-card p {
+    font-size: 0.75rem;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+
+  @keyframes cardIn {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Pipeline mockup */
+  .pipeline {
+    display: flex;
+    gap: 0.35rem;
+    align-items: end;
+    margin: 2rem 0;
+  }
+
+  .pipeline-bar {
+    width: 60px;
+    background: var(--primary-dim);
+    border-radius: 4px 4px 0 0;
+    opacity: 0;
+    animation: barIn 0.5s ease forwards;
+    position: relative;
+  }
+
+  .pipeline-bar .bar-label {
+    position: absolute;
+    bottom: -1.5rem;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.6rem;
+    color: var(--muted);
+    white-space: nowrap;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .pipeline-bar .bar-value {
+    position: absolute;
+    top: -1.25rem;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--fg);
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  @keyframes barIn {
+    from { opacity: 0; height: 0 !important; }
+    to { opacity: 1; }
+  }
+
+  /* Navigation */
+  .nav-dots {
+    position: fixed;
+    bottom: 2rem;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 0.5rem;
+    z-index: 100;
+  }
+
+  .nav-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--border);
+    cursor: pointer;
+    transition: all 0.3s;
+    border: none;
+  }
+
+  .nav-dot.active {
+    background: var(--primary);
+    width: 24px;
+    border-radius: 4px;
+  }
+
+  .nav-arrows {
+    position: fixed;
+    bottom: 2rem;
+    right: 2rem;
+    display: flex;
+    gap: 0.5rem;
+    z-index: 100;
+  }
+
+  .nav-btn {
+    background: var(--card);
+    border: 1px solid var(--border);
+    color: var(--fg);
+    border-radius: 8px;
+    padding: 0.5rem 1rem;
+    font-size: 0.8rem;
+    font-family: 'Inter', sans-serif;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .nav-btn:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+  }
+
+  .progress-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 2px;
+    background: var(--primary);
+    transition: width 0.4s ease;
+    z-index: 100;
+  }
+
+  /* Animate delays */
+  .delay-1 { animation-delay: 0.2s; }
+  .delay-2 { animation-delay: 0.4s; }
+  .delay-3 { animation-delay: 0.6s; }
+  .delay-4 { animation-delay: 0.8s; }
+  .delay-5 { animation-delay: 1.0s; }
+  .delay-6 { animation-delay: 1.2s; }
+  .delay-7 { animation-delay: 1.4s; }
+</style>
+</head>
+<body>
+
+<div class="progress-bar" id="progress"></div>
+
+<div class="tour" id="tour">
+
+  <!-- Slide 0: Welcome -->
+  <div class="slide active" data-slide="0">
+    <div class="slide-number">LinkedIn Outreach Agent</div>
+    <h1>Your AI-powered <span class="highlight">LinkedIn outreach</span> on autopilot</h1>
+    <p class="subtitle">
+      Discover prospects, score them against your ICP, write personalized invites,
+      send at safe rates, follow up, and book meetings. All from a single chat.
+    </p>
+    <div class="flow">
+      <div class="flow-step delay-1">Discover</div>
+      <span class="flow-arrow delay-2">&rarr;</span>
+      <div class="flow-step delay-2">Score</div>
+      <span class="flow-arrow delay-3">&rarr;</span>
+      <div class="flow-step delay-3">Invite</div>
+      <span class="flow-arrow delay-4">&rarr;</span>
+      <div class="flow-step delay-4">Follow up</div>
+      <span class="flow-arrow delay-5">&rarr;</span>
+      <div class="flow-step active-step delay-5">Meeting</div>
+    </div>
+  </div>
+
+  <!-- Slide 1: Setup -->
+  <div class="slide" data-slide="1">
+    <div class="slide-number">Step 1 of 5</div>
+    <h2>Connect your services</h2>
+    <p class="subtitle">
+      Go to Settings and enter your API keys. The agent needs two services to operate.
+    </p>
+    <div class="features">
+      <div class="feature-card delay-1">
+        <h3>Unipile</h3>
+        <p>Persistent LinkedIn session. API Key + DSN + Account ID from unipile.com</p>
+      </div>
+      <div class="feature-card delay-2">
+        <h3>OpenRouter</h3>
+        <p>LLM for personalization and scoring. API key from openrouter.ai</p>
+      </div>
+      <div class="feature-card delay-3">
+        <h3>Calendar</h3>
+        <p>Your booking link for meeting requests. Calendly, Cal.com, or Google.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Slide 2: Campaign -->
+  <div class="slide" data-slide="2">
+    <div class="slide-number">Step 2 of 5</div>
+    <h2>Create a campaign</h2>
+    <p class="subtitle">
+      Each campaign targets a specific audience with its own ICP, messaging strategy,
+      and calendar link. Contacts are isolated per campaign.
+    </p>
+    <div class="chat-mock">
+      <div class="chat-header">
+        <span>Agent</span>
+        <span style="margin-left:auto">Campaign: DeFi Growth</span>
+      </div>
+      <div class="chat-body">
+        <div class="chat-msg user-msg delay-1">
+          <div class="msg-bubble">Create a campaign for DeFi protocol founders</div>
+        </div>
+        <div class="chat-msg agent-msg delay-3">
+          <div class="msg-text">
+            Campaign <strong>"DeFi Growth"</strong> created.<br>
+            Configure the ICP in campaign settings to define your ideal prospect.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Slide 3: Discovery + Score + Invite -->
+  <div class="slide" data-slide="3">
+    <div class="slide-number">Step 3 of 5</div>
+    <h2>Discover, score, and invite</h2>
+    <p class="subtitle">
+      Tell the agent what to do in natural language. It searches LinkedIn,
+      evaluates fit against your ICP, and writes personalized connection notes.
+    </p>
+    <div class="chat-mock">
+      <div class="chat-header">
+        <span>Agent</span>
+        <span style="margin-left:auto">Campaign: DeFi Growth</span>
+      </div>
+      <div class="chat-body">
+        <div class="chat-msg user-msg delay-1">
+          <div class="msg-bubble">Find DeFi founders in Europe and send invites</div>
+        </div>
+        <div class="chat-msg agent-msg delay-2">
+          <div class="task-group">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+            Discovering prospects, Scoring contacts, Sending invites
+            <span style="opacity:0.5;margin-left:0.25rem">12 steps</span>
+          </div>
+          <div class="msg-text">
+            Found 15 profiles. Saved 12 new contacts.<br>
+            Scored: 3 HIGH, 5 MEDIUM, 4 LOW.<br>
+            Sent 3 invites to HIGH-fit contacts. Waiting 45s between each.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Slide 4: Pipeline -->
+  <div class="slide" data-slide="4">
+    <div class="slide-number">Step 4 of 5</div>
+    <h2>Track your pipeline</h2>
+    <p class="subtitle">
+      Monitor acceptance rates, replies, and meetings.
+      The agent follows up automatically after connections accept.
+    </p>
+    <div class="pipeline">
+      <div class="pipeline-bar delay-1" style="height:140px">
+        <span class="bar-value">45</span>
+        <span class="bar-label">Discovered</span>
+      </div>
+      <div class="pipeline-bar delay-2" style="height:100px;background:var(--primary)">
+        <span class="bar-value">28</span>
+        <span class="bar-label">Invited</span>
+      </div>
+      <div class="pipeline-bar delay-3" style="height:60px;background:var(--green)">
+        <span class="bar-value">14</span>
+        <span class="bar-label">Connected</span>
+      </div>
+      <div class="pipeline-bar delay-4" style="height:40px;background:var(--amber)">
+        <span class="bar-value">8</span>
+        <span class="bar-label">Followed up</span>
+      </div>
+      <div class="pipeline-bar delay-5" style="height:25px;background:#c084fc">
+        <span class="bar-value">5</span>
+        <span class="bar-label">Replied</span>
+      </div>
+      <div class="pipeline-bar delay-6" style="height:15px;background:#34d399">
+        <span class="bar-value">2</span>
+        <span class="bar-label">Meetings</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Slide 5: Learn -->
+  <div class="slide" data-slide="5">
+    <div class="slide-number">Step 5 of 5</div>
+    <h2>The agent learns from you</h2>
+    <p class="subtitle">
+      Correct messages, refine your ICP, and share what works.
+      The agent remembers across sessions and gets better over time.
+    </p>
+    <div class="features">
+      <div class="feature-card delay-1">
+        <h3>Corrections</h3>
+        <p>"Never mention pricing in the first message"</p>
+      </div>
+      <div class="feature-card delay-2">
+        <h3>Strategy</h3>
+        <p>"Use a peer-to-peer tone, not salesy"</p>
+      </div>
+      <div class="feature-card delay-3">
+        <h3>Autonomy</h3>
+        <p>Start in Training mode. Graduate to Full Auto as confidence builds.</p>
+      </div>
+    </div>
+    <div style="margin-top:2.5rem;text-align:center">
+      <p style="font-size:0.9rem;color:var(--muted)">Ready to start?</p>
+      <a href="/chat" style="display:inline-block;margin-top:0.75rem;background:var(--primary);color:#0e0e10;padding:0.65rem 2rem;border-radius:8px;font-weight:600;font-size:0.85rem;text-decoration:none;transition:opacity 0.2s" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">Open Agent Chat</a>
+    </div>
+  </div>
+
+</div>
+
+<!-- Navigation -->
+<div class="nav-dots" id="dots"></div>
+<div class="nav-arrows">
+  <button class="nav-btn" id="prevBtn" onclick="go(-1)">&larr; Back</button>
+  <button class="nav-btn" id="nextBtn" onclick="go(1)">Next &rarr;</button>
+</div>
+
+<script>
+  const slides = document.querySelectorAll('.slide');
+  const total = slides.length;
+  let current = 0;
+
+  // Build dots
+  const dotsEl = document.getElementById('dots');
+  for (let i = 0; i < total; i++) {
+    const dot = document.createElement('button');
+    dot.className = 'nav-dot' + (i === 0 ? ' active' : '');
+    dot.onclick = () => goTo(i);
+    dotsEl.appendChild(dot);
+  }
+
+  function goTo(n) {
+    if (n < 0 || n >= total) return;
+    slides[current].classList.remove('active');
+    dotsEl.children[current].classList.remove('active');
+    current = n;
+    slides[current].classList.add('active');
+    dotsEl.children[current].classList.add('active');
+    document.getElementById('progress').style.width = ((current / (total - 1)) * 100) + '%';
+    document.getElementById('prevBtn').style.opacity = current === 0 ? '0.3' : '1';
+    document.getElementById('nextBtn').textContent = current === total - 1 ? 'Start' : 'Next \u2192';
+    if (current === total - 1) {
+      document.getElementById('nextBtn').onclick = () => window.location.href = '/chat';
+    } else {
+      document.getElementById('nextBtn').onclick = () => go(1);
+    }
+  }
+
+  function go(dir) { goTo(current + dir); }
+
+  // Keyboard nav
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowRight' || e.key === ' ') go(1);
+    if (e.key === 'ArrowLeft') go(-1);
+  });
+
+  // Auto-advance every 8 seconds
+  let autoTimer = setInterval(() => go(1), 8000);
+  document.addEventListener('click', () => { clearInterval(autoTimer); });
+  document.addEventListener('keydown', () => { clearInterval(autoTimer); });
+
+  goTo(0);
+</script>
+
+</body>
+</html>
