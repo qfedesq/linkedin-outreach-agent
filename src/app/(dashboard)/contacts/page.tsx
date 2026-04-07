@@ -35,6 +35,7 @@ const STATUS_LABELS: Record<string, string> = {
   REPLIED: "Replied",
   MEETING_BOOKED: "Meeting Booked",
   UNRESPONSIVE: "Unresponsive",
+  DISQUALIFIED: "Disqualified",
 };
 
 type SortField = "name" | "position" | "company" | "profileFit" | "status" | "campaign" | "owner" | "source";

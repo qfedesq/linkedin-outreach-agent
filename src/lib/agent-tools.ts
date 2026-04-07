@@ -59,6 +59,7 @@ export function getToolDefinitions() {
     // ===== CONTACT MANAGEMENT =====
     { type: "function" as const, function: { name: "assign_contacts_to_campaign", description: "Bulk-assign unassigned contacts (or all user contacts) to a campaign. Use before score_contacts when contacts have no campaign.", parameters: { type: "object", properties: { campaign_id: { type: "string", description: "Target campaign ID to assign contacts to" }, only_unassigned: { type: "boolean", description: "Only assign contacts that currently have no campaign (default: true)" } }, required: ["campaign_id"] } } },
     { type: "function" as const, function: { name: "delete_contacts", description: "Delete contacts by IDs, by status, or all contacts in a campaign", parameters: { type: "object", properties: { contact_ids: { type: "array", items: { type: "string" }, description: "Specific contact IDs to delete" }, status: { type: "string", description: "Delete all contacts with this status (e.g. TO_CONTACT, UNRESPONSIVE)" }, campaign_id: { type: "string", description: "Delete all contacts in this campaign" }, confirm: { type: "boolean", description: "Must be true to execute bulk deletes" } } } } },
+    { type: "function" as const, function: { name: "update_contact_status", description: "Update status of contacts — by ID list, or bulk by campaign + optional fit filter. Use to disqualify LOW fit contacts, reactivate stalled ones, or clean the pipeline without deleting.", parameters: { type: "object", properties: { contact_ids: { type: "array", items: { type: "string" }, description: "Specific contact IDs to update" }, status: { type: "string", enum: ["TO_CONTACT","INVITED","CONNECTED","FOLLOWED_UP","REPLIED","MEETING_BOOKED","UNRESPONSIVE","DISQUALIFIED"], description: "New status to assign" }, reason: { type: "string", description: "Reason for the change (logged, not written to contact)" }, campaign_id: { type: "string", description: "Bulk-update all contacts in this campaign (combine with fit_filter)" }, fit_filter: { type: "string", enum: ["HIGH","MEDIUM","LOW"], description: "Only update contacts with this fit score (requires campaign_id)" } }, required: ["status"] } } },
     // ===== SELF-HEALING =====
     { type: "function" as const, function: { name: "diagnose_and_fix", description: "Diagnose an error from a failed tool, attempt auto-fix, and provide clear instructions. Call this when any tool returns success:false.", parameters: { type: "object", properties: { error_message: { type: "string", description: "The error message from the failed tool" }, failed_tool: { type: "string", description: "Name of the tool that failed" }, context: { type: "string", description: "Additional context about what was being attempted" } }, required: ["error_message", "failed_tool"] } } },
     { type: "function" as const, function: { name: "check_system_health", description: "Pre-flight check: verify OpenRouter, Unipile/LinkedIn, rate limits, and campaign config are all working before executing tasks", parameters: { type: "object", properties: {} } } },
@@ -841,6 +842,41 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
 
       await logActivity(userId, "delete_contacts", { level: "info", message: `Deleted ${description}` });
       return { success: true, message: `Deleted ${description}.` };
+    }
+
+    case "update_contact_status": {
+      const contactIds = args.contact_ids as string[] | undefined;
+      const status = args.status as string;
+      const reason = args.reason as string | undefined;
+      const campaignIdArg = args.campaign_id as string | undefined;
+      const fitFilter = args.fit_filter as string | undefined;
+
+      const validStatuses = ["TO_CONTACT","INVITED","CONNECTED","FOLLOWED_UP","REPLIED","MEETING_BOOKED","UNRESPONSIVE","DISQUALIFIED"];
+      if (!validStatuses.includes(status)) {
+        return { success: false, message: `Invalid status "${status}". Valid: ${validStatuses.join(", ")}` };
+      }
+
+      if (contactIds?.length) {
+        progress(`Updating ${contactIds.length} contact(s) to ${status}...`);
+        const updated = await prisma.contact.updateMany({ where: { id: { in: contactIds }, userId }, data: { status } });
+        await logActivity(userId, "update_contact_status", { level: "info", message: `Updated ${updated.count} contacts to ${status}${reason ? ` — ${reason}` : ""}` });
+        return { success: true, message: `Updated \`${updated.count}\` contact(s) to \`${status}\`.${reason ? ` Reason: ${reason}` : ""}` };
+      }
+
+      if (campaignIdArg) {
+        const where: Record<string, unknown> = { userId, campaignId: campaignIdArg };
+        if (fitFilter) where.profileFit = fitFilter;
+        const count = await prisma.contact.count({ where });
+        if (count === 0) return { success: true, message: "No contacts match the criteria." };
+        progress(`Updating ${count} contact(s)${fitFilter ? ` (${fitFilter} fit)` : ""} to ${status}...`);
+        await prisma.contact.updateMany({ where, data: { status } });
+        const camp = await prisma.campaign.findFirst({ where: { id: campaignIdArg, userId }, select: { name: true } });
+        const fitLabel = fitFilter ? ` with \`${fitFilter}\` fit` : "";
+        await logActivity(userId, "update_contact_status", { level: "info", message: `Bulk updated ${count} contacts${fitLabel} in "${camp?.name}" to ${status}` });
+        return { success: true, message: `Updated \`${count}\` contact(s)${fitLabel} in campaign "${camp?.name || campaignIdArg}" to \`${status}\`.${reason ? ` Reason: ${reason}` : ""}` };
+      }
+
+      return { success: false, message: "Provide `contact_ids` OR `campaign_id` (with optional `fit_filter`)." };
     }
 
     // ===== SELF-HEALING TOOLS =====
