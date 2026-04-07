@@ -11,6 +11,7 @@ import {
   Zap, Settings, ExternalLink, Clock, Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { DynamicWidgetGrid, type DynamicWidgetConfig } from "@/components/dynamic-widget-renderer";
 
 /* ─────────────── Types ─────────────── */
 
@@ -125,6 +126,7 @@ export default function DashboardPage({ campaignId }: { campaignId?: string }) {
   const [campaigns, setCampaigns] = useState<CampaignSummary[]>([]);
   const [campaignData, setCampaignData] = useState<CampaignSummary | null>(null);
   const [panelWidth, setPanelWidth] = useState(360);
+  const [widgets, setWidgets] = useState<DynamicWidgetConfig[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const initializedRef = useRef(false);
@@ -217,6 +219,12 @@ export default function DashboardPage({ campaignId }: { campaignId?: string }) {
             setHistory(data.history);
           }
           if (data.greeting) setMessages(prev => [...prev, { role: "assistant", content: data.greeting }]);
+          // Fetch custom widgets for this dashboard
+          const wParams = campaignId ? `?campaignId=${campaignId}` : "";
+          fetch(`/api/widgets${wParams}`)
+            .then(r => r.json())
+            .then(d => setWidgets(d.widgets || []))
+            .catch(() => {});
         })
         .catch(() => {});
     }, 0);
@@ -369,6 +377,11 @@ export default function DashboardPage({ campaignId }: { campaignId?: string }) {
     toast.success("Feedback saved — the agent will learn from this");
   };
 
+  const handleDeleteWidget = async (widgetId: string) => {
+    await fetch(`/api/widgets?id=${widgetId}`, { method: "DELETE" });
+    setWidgets(prev => prev.filter(w => w.id !== widgetId));
+  };
+
   const suggestions = getSuggestions(stats);
 
   return (
@@ -446,6 +459,15 @@ export default function DashboardPage({ campaignId }: { campaignId?: string }) {
             ))}
           </div>
         </div>
+
+        {/* Row 4 — Dynamic widgets (agent-created) */}
+        {widgets.length > 0 && (
+          <DynamicWidgetGrid
+            widgets={widgets}
+            campaignId={campaignId}
+            onDelete={handleDeleteWidget}
+          />
+        )}
       </div>
 
       {/* ───── Resize handle ───── */}
