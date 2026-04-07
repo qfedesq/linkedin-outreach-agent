@@ -49,28 +49,39 @@ export async function GET(request: NextRequest) {
 
   const skip = (page - 1) * limit;
 
-  const contacts = await prisma.contact.findMany({
-    where,
-    orderBy: { createdAt: "desc" },
-    skip,
-    take: limit,
-  });
+  const [contacts, total] = await Promise.all([
+    prisma.contact.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip,
+      take: limit,
+    }),
+    prisma.contact.count({ where }),
+  ]);
 
-  // For global view, attach user info
+  // For global view, attach user info + return all distinct owners
   let enrichedContacts = contacts;
+  let allOwners: Array<{ id: string; name: string | null; email: string | null }> = [];
+
   if (global) {
-    const userIds = [...new Set(contacts.map(c => c.userId))];
+    // Fetch ALL distinct userIds across the ENTIRE contacts table (unfiltered)
+    // so the owner dropdown always shows all users regardless of current filter
+    const allUserIds = await prisma.contact.findMany({
+      select: { userId: true },
+      distinct: ["userId"],
+    });
+    const uniqueUserIds = allUserIds.map(r => r.userId);
+
     const users = await prisma.user.findMany({
-      where: { id: { in: userIds } },
+      where: { id: { in: uniqueUserIds } },
       select: { id: true, name: true, email: true },
     });
     const userMap = new Map(users.map(u => [u.id, { name: u.name, email: u.email }]));
     enrichedContacts = contacts.map(c => ({ ...c, user: userMap.get(c.userId) || null })) as typeof contacts;
+    allOwners = users;
   }
 
-  const total = await prisma.contact.count({ where });
-
-  return NextResponse.json({ contacts: enrichedContacts, total, page, limit });
+  return NextResponse.json({ contacts: enrichedContacts, total, page, limit, allOwners });
 }
 
 export async function POST(request: Request) {

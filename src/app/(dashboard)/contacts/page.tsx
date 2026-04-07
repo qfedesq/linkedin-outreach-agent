@@ -49,7 +49,7 @@ export default function ContactsPage() {
   const [campaignFilter, setCampaignFilter] = useState("all");
   const [ownerFilter, setOwnerFilter] = useState("all");
   const [campaigns, setCampaigns] = useState<Array<{ id: string; name: string }>>([]);
-  const [owners, setOwners] = useState<Array<{ id: string; name: string; email: string }>>([]);
+  const [owners, setOwners] = useState<Array<{ id: string; name: string | null; email: string | null }>>([]);
   const [page, setPage] = useState(1);
   const [sortField, setSortField] = useState<SortField>("name");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
@@ -57,17 +57,6 @@ export default function ContactsPage() {
   useEffect(() => {
     fetch("/api/campaigns").then(r => r.json()).then(d => setCampaigns(d.campaigns || [])).catch(() => {});
   }, []);
-
-  // Derive unique owners from fetched contacts
-  useEffect(() => {
-    const seen = new Map<string, { id: string; name: string; email: string }>();
-    for (const c of contacts) {
-      if (c.user && c.userId && !seen.has(c.userId)) {
-        seen.set(c.userId, { id: c.userId, name: c.user.name || c.user.email?.split("@")[0] || "Unknown", email: c.user.email || "" });
-      }
-    }
-    if (seen.size > 0) setOwners([...seen.values()]);
-  }, [contacts]);
 
   const campaignMap = Object.fromEntries(campaigns.map(c => [c.id, c.name]));
 
@@ -83,6 +72,8 @@ export default function ContactsPage() {
     const data = await res.json();
     setContacts(data.contacts);
     setTotal(data.total);
+    // allOwners comes from API — covers all pages, not just current
+    if (data.allOwners?.length > 0) setOwners(data.allOwners);
   }, [page, search, statusFilter, fitFilter, campaignFilter, ownerFilter]);
 
   useEffect(() => { fetchContacts(); }, [fetchContacts]);
@@ -226,7 +217,11 @@ export default function ContactsPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All owners</SelectItem>
-                {owners.map(o => <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>)}
+                {owners.map(o => (
+                  <SelectItem key={o.id} value={o.id}>
+                    {o.name?.split(" ")[0] || o.email?.split("@")[0] || o.id.slice(-6)}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
