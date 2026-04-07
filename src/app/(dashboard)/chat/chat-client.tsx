@@ -7,7 +7,7 @@ import { Send, Loader2, Users, UserCheck, Inbox, Calendar, Copy, Check, ChevronR
 import { cn } from "@/lib/utils";
 
 interface Message { role: "user" | "assistant"; content: string; thinking?: string[] }
-interface Stats { total: number; invited: number; connected: number; replied: number; meetings: number }
+interface Stats { total: number; toContact: number; invited: number; connected: number; replied: number; meetings: number }
 interface PriorityItem {
   contactId: string;
   contactName: string;
@@ -17,16 +17,148 @@ interface PriorityItem {
   nextBestAction: string;
 }
 
-const SUGGESTIONS = [
-  "What should we do next?",
-  "Show me the pipeline",
-  "Prioritize the pipeline by expected value",
-  "Build the account map for this campaign",
-  "Discover 20 prospects",
-  "Design a messaging experiment",
-  "Reactivate stale contacts",
-  "Run the daily cycle"
-];
+interface Suggestion {
+  text: string;
+  message: string;
+  tag?: string;
+  tagColor?: string;
+}
+
+function getSuggestions(stats: Stats): Suggestion[] {
+  const s: Array<Suggestion & { priority: number }> = [];
+
+  // ── Urgent: replies need a strategy NOW ─────────────────────────────────
+  if (stats.replied > 0) {
+    s.push({
+      text: `Reply strategy for ${stats.replied} contact${stats.replied > 1 ? "s" : ""} who replied`,
+      message: "List contacts who replied and draft a reply strategy for each one",
+      tag: "Replies", tagColor: "text-red-500 bg-red-500/10",
+      priority: 100,
+    });
+  }
+
+  // ── Urgent: meeting booked — prep the brief ──────────────────────────────
+  if (stats.meetings > 0) {
+    s.push({
+      text: `Meeting brief for ${stats.meetings} booked call${stats.meetings > 1 ? "s" : ""}`,
+      message: "Find my meeting-booked contacts and prepare a full meeting brief with background, objections, and talk track for each",
+      tag: "Meeting", tagColor: "text-purple-500 bg-purple-500/10",
+      priority: 95,
+    });
+  }
+
+  // ── High: connected contacts need follow-ups ─────────────────────────────
+  if (stats.connected > 0) {
+    s.push({
+      text: `Send follow-ups to ${stats.connected} connected contact${stats.connected > 1 ? "s" : ""}`,
+      message: "Send follow-up messages to all connected contacts who haven't received one yet",
+      tag: "Follow-up", tagColor: "text-blue-500 bg-blue-500/10",
+      priority: 85,
+    });
+  }
+
+  // ── High: pending invites to check ──────────────────────────────────────
+  if (stats.invited > 0) {
+    s.push({
+      text: `Check ${stats.invited} pending invite${stats.invited > 1 ? "s" : ""} for acceptance`,
+      message: "Check connections and inbox — show me which invites were accepted and if anyone replied",
+      tag: "Check", tagColor: "text-amber-500 bg-amber-500/10",
+      priority: 80,
+    });
+  }
+
+  // ── Pipeline ops: only if there's enough data ────────────────────────────
+  if (stats.total >= 5) {
+    s.push({
+      text: "Prioritize pipeline by expected value",
+      message: "Prioritize the pipeline by expected value and give me the top 5 actions to take right now with clear next steps",
+      tag: "Ops", tagColor: "text-teal-500 bg-teal-500/10",
+      priority: 70,
+    });
+  }
+
+  if (stats.total >= 5) {
+    s.push({
+      text: "Build account map — buying committee coverage",
+      message: "Build the account map for this campaign and show me buying-committee coverage per company with suggested next moves",
+      tag: "Ops", tagColor: "text-teal-500 bg-teal-500/10",
+      priority: 65,
+    });
+  }
+
+  if (stats.total >= 10) {
+    s.push({
+      text: "Reactivate stale contacts",
+      message: "Find contacts with no activity in 30+ days and generate reactivation angles and draft messages for each",
+      tag: "Reactivate", tagColor: "text-orange-500 bg-orange-500/10",
+      priority: 60,
+    });
+  }
+
+  if (stats.total >= 5) {
+    s.push({
+      text: "Design a message A/B experiment",
+      message: "Design a structured message A/B experiment for this campaign to improve reply rates — create 2 variants with different angles",
+      tag: "Experiment", tagColor: "text-indigo-500 bg-indigo-500/10",
+      priority: 50,
+    });
+  }
+
+  if (stats.total >= 5) {
+    s.push({
+      text: "Show message experiments",
+      message: "List all saved message experiments for this campaign and summarize their results",
+      tag: "Experiment", tagColor: "text-indigo-500 bg-indigo-500/10",
+      priority: 40,
+    });
+  }
+
+  // ── Discover: empty pipeline → highest priority ──────────────────────────
+  if (stats.total === 0) {
+    s.push({
+      text: "Discover 25 prospects to get started",
+      message: "Let's start — search LinkedIn for 25 prospects matching my ICP and assign them to the active campaign",
+      tag: "Start", tagColor: "text-green-500 bg-green-500/10",
+      priority: 90,
+    });
+  } else {
+    s.push({
+      text: "Discover more prospects",
+      message: "Discover 20 more prospects for the active campaign — search LinkedIn by job title and location matching my ICP",
+      tag: "Discover", tagColor: "text-green-500 bg-green-500/10",
+      priority: 30,
+    });
+  }
+
+  // ── Score unscored contacts ──────────────────────────────────────────────
+  if (stats.toContact > 0) {
+    s.push({
+      text: `Score ${stats.toContact} contact${stats.toContact > 1 ? "s" : ""} waiting in queue`,
+      message: "Score all unscored contacts and then prepare invites for the HIGH fit ones",
+      tag: "Score", tagColor: "text-sky-500 bg-sky-500/10",
+      priority: 75,
+    });
+  }
+
+  // ── Daily cycle ──────────────────────────────────────────────────────────
+  if (stats.total > 0) {
+    s.push({
+      text: "Run the full daily cycle",
+      message: "Run the full daily cycle: check connections, send follow-ups, scan inbox",
+      tag: "Cycle", tagColor: "text-muted-foreground bg-muted/40",
+      priority: 20,
+    });
+  }
+
+  // ── Fallback ─────────────────────────────────────────────────────────────
+  s.push({
+    text: "What should we do next?",
+    message: "What should we do next? Give me a prioritized action plan based on the current pipeline state.",
+    priority: 10,
+  });
+
+  return s.sort((a, b) => b.priority - a.priority).slice(0, 8);
+}
 
 export default function ChatPage({ campaignId }: { campaignId?: string }) {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -35,7 +167,7 @@ export default function ChatPage({ campaignId }: { campaignId?: string }) {
   const [streamingContent, setStreamingContent] = useState("");
   const [thinkingSteps, setThinkingSteps] = useState<string[]>([]);
   const [history, setHistory] = useState<Array<{ role: string; content: string }>>([]);
-  const [stats, setStats] = useState<Stats>({ total: 0, invited: 0, connected: 0, replied: 0, meetings: 0 });
+  const [stats, setStats] = useState<Stats>({ total: 0, toContact: 0, invited: 0, connected: 0, replied: 0, meetings: 0 });
   const [priorities, setPriorities] = useState<PriorityItem[]>([]);
   const [ratings, setRatings] = useState<Map<number, "up" | "down">>(new Map());
   const [feedbackOpen, setFeedbackOpen] = useState<number | null>(null);
@@ -53,12 +185,12 @@ export default function ChatPage({ campaignId }: { campaignId?: string }) {
 
   const fetchStats = useCallback(async () => {
     try {
-      const statuses = ["INVITED","CONNECTED","REPLIED","MEETING_BOOKED"];
+      const statuses = ["TO_CONTACT","INVITED","CONNECTED","REPLIED","MEETING_BOOKED"];
       const results = await Promise.all(statuses.map(s => fetch(`/api/contacts?status=${s}&limit=1`).then(r => r.json()).then(d => ({ s, n: d.total || 0 }))));
       const total = await fetch("/api/contacts?limit=1").then(r => r.json()).then(d => d.total || 0);
       const m: Record<string, number> = {};
       results.forEach(r => m[r.s] = r.n);
-      setStats({ total, invited: m.INVITED || 0, connected: m.CONNECTED || 0, replied: m.REPLIED || 0, meetings: m.MEETING_BOOKED || 0 });
+      setStats({ total, toContact: m.TO_CONTACT || 0, invited: m.INVITED || 0, connected: m.CONNECTED || 0, replied: m.REPLIED || 0, meetings: m.MEETING_BOOKED || 0 });
     } catch {}
   }, []);
 
@@ -265,8 +397,17 @@ export default function ChatPage({ campaignId }: { campaignId?: string }) {
                 </div>
               )}
               <div className="grid grid-cols-2 gap-2 w-full max-w-lg">
-                {SUGGESTIONS.map(s => (
-                  <button key={s} onClick={() => sendMessage(s)} className="text-left text-sm px-3 py-2 rounded-lg border border-border hover:bg-accent/50 transition-colors text-muted-foreground hover:text-foreground">{s}</button>
+                {getSuggestions(stats).map((s, i) => (
+                  <button
+                    key={i}
+                    onClick={() => sendMessage(s.message)}
+                    className="text-left text-sm px-3 py-2.5 rounded-lg border border-border hover:bg-accent/50 transition-colors text-muted-foreground hover:text-foreground flex flex-col gap-1"
+                  >
+                    <span>{s.text}</span>
+                    {s.tag && (
+                      <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full self-start ${s.tagColor}`}>{s.tag}</span>
+                    )}
+                  </button>
                 ))}
               </div>
             </div>
