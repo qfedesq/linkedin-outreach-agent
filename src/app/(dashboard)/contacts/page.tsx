@@ -67,6 +67,8 @@ export default function ContactsPage() {
     if (fitFilter !== "all") params.set("fit", fitFilter);
     if (campaignFilter !== "all") params.set("campaignId", campaignFilter);
     if (ownerFilter !== "all") params.set("userId", ownerFilter);
+    params.set("sortField", sortField);
+    params.set("sortDir", sortDir);
 
     const res = await fetch(`/api/contacts?${params}`);
     const data = await res.json();
@@ -74,7 +76,7 @@ export default function ContactsPage() {
     setTotal(data.total);
     // allOwners comes from API — covers all pages, not just current
     if (data.allOwners?.length > 0) setOwners(data.allOwners);
-  }, [page, search, statusFilter, fitFilter, campaignFilter, ownerFilter]);
+  }, [page, search, statusFilter, fitFilter, campaignFilter, ownerFilter, sortField, sortDir]);
 
   useEffect(() => {
     const timeout = setTimeout(() => {
@@ -115,7 +117,7 @@ export default function ContactsPage() {
     a.click();
   };
 
-  // Client-side sort
+  // Server-side sort — just reset to page 1 when column changes
   const toggleSort = (field: SortField) => {
     if (sortField === field) {
       setSortDir(sortDir === "asc" ? "desc" : "asc");
@@ -123,40 +125,8 @@ export default function ContactsPage() {
       setSortField(field);
       setSortDir("asc");
     }
+    setPage(1);
   };
-
-  const sorted = [...contacts].sort((a, b) => {
-    let va = "";
-    let vb = "";
-    switch (sortField) {
-      case "name": va = a.name; vb = b.name; break;
-      case "position": va = a.position || ""; vb = b.position || ""; break;
-      case "company": va = a.company || ""; vb = b.company || ""; break;
-      case "profileFit": {
-        const fitOrder: Record<string, number> = { HIGH: 0, MEDIUM: 1, LOW: 2 };
-        return sortDir === "asc"
-          ? (fitOrder[a.profileFit] ?? 3) - (fitOrder[b.profileFit] ?? 3)
-          : (fitOrder[b.profileFit] ?? 3) - (fitOrder[a.profileFit] ?? 3);
-      }
-      case "status": {
-        const statusOrder = Object.keys(STATUS_LABELS);
-        return sortDir === "asc"
-          ? statusOrder.indexOf(a.status) - statusOrder.indexOf(b.status)
-          : statusOrder.indexOf(b.status) - statusOrder.indexOf(a.status);
-      }
-      case "campaign":
-        va = a.campaignId ? (campaignMap[a.campaignId] || "") : "";
-        vb = b.campaignId ? (campaignMap[b.campaignId] || "") : "";
-        break;
-      case "owner":
-        va = a.user?.name || a.user?.email || "";
-        vb = b.user?.name || b.user?.email || "";
-        break;
-      case "source": va = a.source || ""; vb = b.source || ""; break;
-    }
-    const cmp = va.localeCompare(vb, undefined, { sensitivity: "base" });
-    return sortDir === "asc" ? cmp : -cmp;
-  });
 
   const totalPages = Math.ceil(total / 50);
 
@@ -249,7 +219,7 @@ export default function ContactsPage() {
                 </tr>
               </thead>
               <tbody>
-                {sorted.map((c) => (
+                {contacts.map((c) => (
                   <tr key={c.id} className="border-b border-border/40 hover:bg-accent/30 transition-colors">
                     <td className="px-3 py-2 truncate">
                       <a

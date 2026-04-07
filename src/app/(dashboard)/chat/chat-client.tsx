@@ -374,7 +374,7 @@ export default function ChatPage({ campaignId }: { campaignId?: string }) {
   ];
 
   return (
-    <div className="flex flex-col h-[calc(100vh-48px)] -mx-6 -mt-6">
+    <div className="flex flex-col h-[calc(100vh-48px)] -mx-6 -mt-6 -mb-6">
       {/* Stats bar */}
       <div className="flex items-center h-9 px-6 border-b border-border bg-card/30 gap-5 shrink-0">
         {statItems.map(s => (

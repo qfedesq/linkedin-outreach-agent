@@ -28,6 +28,8 @@ export async function GET(request: NextRequest) {
   const limit = parseInt(searchParams.get("limit") || "50");
 
   const campaignId = searchParams.get("campaignId");
+  const sortField = searchParams.get("sortField") || "createdAt";
+  const sortDir = (searchParams.get("sortDir") || "desc") as "asc" | "desc";
 
   const global = searchParams.get("global") === "true";
   const filterUserId = searchParams.get("userId");
@@ -49,10 +51,20 @@ export async function GET(request: NextRequest) {
 
   const skip = (page - 1) * limit;
 
+  // Map UI sort fields to Prisma orderBy
+  const allowedSortFields: Record<string, string> = {
+    name: "name", position: "position", company: "company",
+    profileFit: "profileFit", status: "status",
+    campaign: "campaignId", owner: "userId", source: "source",
+    createdAt: "createdAt",
+  };
+  const prismaField = allowedSortFields[sortField] || "createdAt";
+  const orderBy = { [prismaField]: sortDir };
+
   const [contacts, total] = await Promise.all([
     prisma.contact.findMany({
       where,
-      orderBy: { createdAt: "desc" },
+      orderBy,
       skip,
       take: limit,
     }),
