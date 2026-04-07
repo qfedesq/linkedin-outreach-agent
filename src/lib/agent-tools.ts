@@ -91,7 +91,30 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
       if (args.fit) where.profileFit = args.fit;
       if (args.query) where.OR = [{ name: { contains: args.query as string } }, { company: { contains: args.query as string } }, { position: { contains: args.query as string } }];
       const contacts = await prisma.contact.findMany({ where, take: (args.limit as number) || 10, orderBy: { createdAt: "desc" } });
-      return { success: true, data: contacts.map(c => ({ name: c.name, position: c.position, company: c.company, fit: c.profileFit, status: c.status, degree: c.connectionDegree, url: c.linkedinUrl })), message: `Found ${contacts.length} contacts` };
+      // Build campaign name lookup for the contacts found
+      const uniqueCampIds = [...new Set(contacts.map(c => c.campaignId).filter(Boolean))] as string[];
+      const campNameMap = new Map<string, string>();
+      if (uniqueCampIds.length > 0) {
+        const camps = await prisma.campaign.findMany({ where: { id: { in: uniqueCampIds } }, select: { id: true, name: true } });
+        camps.forEach(c => campNameMap.set(c.id, c.name));
+      }
+      return {
+        success: true,
+        data: contacts.map(c => ({
+          id: c.id,
+          name: c.name,
+          position: c.position,
+          company: c.company,
+          fit: c.profileFit,
+          fitReason: c.fitRationale,
+          status: c.status,
+          degree: c.connectionDegree,
+          url: c.linkedinUrl,
+          campaignId: c.campaignId || null,
+          campaign: c.campaignId ? (campNameMap.get(c.campaignId) || c.campaignId) : null,
+        })),
+        message: `Found ${contacts.length} contacts`,
+      };
     }
 
     case "get_recent_activity": {
@@ -370,11 +393,49 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
       allReady.sort((a, b) => (fitOrder[a.profileFit || ""] ?? 3) - (fitOrder[b.profileFit || ""] ?? 3));
       const contacts = allReady.slice(0, maxBatch);
 
-      if (contacts.length === 0) return { success: true, message: `No contacts ready for invites${prepCampaignId ? " in this campaign" : ""}. Discover and score prospects first.` };
+      // Bug 1: enhanced diagnostic when campaign_id was specified but no contacts found
+      if (contacts.length === 0) {
+        if (prepCampaignId) {
+          const totalReady = await prisma.contact.count({ where: { userId, status: "TO_CONTACT" } });
+          const unassigned = await prisma.contact.count({ where: { userId, status: "TO_CONTACT", campaignId: null } });
+          const otherCamps = totalReady - unassigned;
+          const campName = (await prisma.campaign.findFirst({ where: { id: prepCampaignId, userId }, select: { name: true } }))?.name || prepCampaignId;
+          let diagMsg = `**No TO_CONTACT contacts found in campaign "${campName}".**`;
+          if (totalReady > 0) {
+            diagMsg += `\n\n**Pipeline has ${totalReady} TO_CONTACT contact(s) total:**`;
+            if (unassigned > 0) diagMsg += `\n- ${unassigned} not assigned to any campaign`;
+            if (otherCamps > 0) diagMsg += `\n- ${otherCamps} assigned to a different campaign`;
+            diagMsg += `\n\n**Fix:** Call \`assign_contacts_to_campaign\` with \`campaign_id: "${prepCampaignId}"\` to assign unassigned contacts, then retry \`prepare_invites\`.`;
+          } else {
+            diagMsg += " No TO_CONTACT contacts in the pipeline at all. Discover and score prospects first.";
+          }
+          return { success: false, message: diagMsg };
+        }
+        return { success: true, message: "No contacts ready for invites. Discover and score prospects first." };
+      }
 
-      // Load campaign context for each contact's campaign
+      // Bug 2: preload and PIN the requested campaign's strategy for all contacts in this batch.
+      // When campaign_id is explicitly provided, every contact gets that campaign's messaging
+      // regardless of what campaignId is stored on the contact record.
       const campCache = new Map<string, CampaignContext>();
       const userName = (await prisma.user.findUnique({ where: { id: userId } }))?.name || "the outreach team";
+
+      let pinnedCampCtx: CampaignContext | null = null;
+      if (prepCampaignId) {
+        const prepCamp = await prisma.campaign.findFirst({ where: { id: prepCampaignId, userId } });
+        if (prepCamp) {
+          pinnedCampCtx = {
+            userName,
+            campaignName: prepCamp.name,
+            campaignDescription: prepCamp.description || undefined,
+            strategyNotes: prepCamp.strategyNotes || undefined,
+            calendarUrl: prepCamp.calendarUrl || undefined,
+            icpDefinition: prepCamp.icpDefinition || undefined,
+          };
+          campCache.set(prepCampaignId, pinnedCampCtx);
+        }
+      }
+
       const batch = await prisma.inviteBatch.create({ data: { userId } });
       const items = [];
       const prepStartTime = Date.now();
@@ -387,11 +448,12 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
         }
         const userPrompt = [`Name: ${c.name}`, c.position && `Position: ${c.position}`, c.company && `Company: ${c.company}`, c.fitRationale && `Fit: ${c.fitRationale}`].filter(Boolean).join("\n");
         let msg = "";
-        let campCtx: CampaignContext = { userName, campaignName: "Outreach" };
-        if (c.campaignId) {
+        // Use pinned campaign context if available; fall back to per-contact campaign; last resort "Outreach"
+        let campCtx: CampaignContext = pinnedCampCtx || { userName, campaignName: "Outreach" };
+        if (!pinnedCampCtx && c.campaignId) {
           if (!campCache.has(c.campaignId)) {
             const camp = await prisma.campaign.findFirst({ where: { id: c.campaignId, userId } });
-            if (camp) campCache.set(c.campaignId, { userName, campaignName: camp.name, campaignDescription: camp.description || undefined, strategyNotes: camp.strategyNotes || undefined, calendarUrl: camp.calendarUrl || undefined });
+            if (camp) campCache.set(c.campaignId, { userName, campaignName: camp.name, campaignDescription: camp.description || undefined, strategyNotes: camp.strategyNotes || undefined, calendarUrl: camp.calendarUrl || undefined, icpDefinition: camp.icpDefinition || undefined });
           }
           campCtx = campCache.get(c.campaignId) || campCtx;
         }

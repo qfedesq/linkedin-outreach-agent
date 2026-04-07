@@ -75,21 +75,24 @@ export interface CampaignContext {
   campaignDescription?: string;
   strategyNotes?: string;
   calendarUrl?: string;
+  icpDefinition?: string;
 }
 
 export function getConnectionNotePrompt(ctx: CampaignContext): string {
   const who = ctx.userName || "the outreach team";
-  const desc = ctx.campaignDescription || ctx.campaignName;
+  const desc = ctx.campaignDescription || "";
   const strategy = ctx.strategyNotes || "";
+  const icp = ctx.icpDefinition || "";
 
   return `You are writing LinkedIn connection request notes on behalf of ${who}.
 
 CAMPAIGN: "${ctx.campaignName}"
 ${desc ? `WHAT WE OFFER: ${desc}` : ""}
-${strategy ? `MESSAGING STYLE: ${strategy}` : ""}
+${icp ? `TARGET PROFILE (ICP): ${icp.substring(0, 500)}` : ""}
+${strategy ? `MESSAGING STRATEGY: ${strategy}` : ""}
 
 CONNECTION NOTE FORMULA:
-[First name] — [specific signal about their company/role]. [1-line hook about our offering]. [Soft CTA]?
+[First name] — [specific signal about their company/role]. [1-line hook relevant to THIS campaign]. [Soft CTA]?
 
 RULES:
 - MUST be <= 200 characters total. Be very concise.
@@ -97,7 +100,7 @@ RULES:
 - Never use "I came across your profile" or generic openers
 - End with a low-pressure question
 - Tone: peer-to-peer, knowledgeable, not salesy
-- Message must be relevant to the campaign above
+- Message MUST relate to "${ctx.campaignName}" — do NOT mention products or angles from other campaigns
 
 Respond with ONLY the connection note text, nothing else.`;
 }
