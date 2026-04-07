@@ -124,15 +124,50 @@ export default function DashboardPage({ campaignId }: { campaignId?: string }) {
   const [widgetContext, setWidgetContext] = useState<{ label: string } | null>(null);
   const [campaigns, setCampaigns] = useState<CampaignSummary[]>([]);
   const [campaignData, setCampaignData] = useState<CampaignSummary | null>(null);
+  const [panelWidth, setPanelWidth] = useState(360);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const initializedRef = useRef(false);
+  const isDraggingRef = useRef(false);
+  const dragStartXRef = useRef(0);
+  const dragStartWidthRef = useRef(360);
 
   const scrollToBottom = useCallback(() => {
     setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
   }, []);
 
   useEffect(scrollToBottom, [messages, liveSegments, scrollToBottom]);
+
+  // Resize panel drag logic
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    isDraggingRef.current = true;
+    dragStartXRef.current = e.clientX;
+    dragStartWidthRef.current = panelWidth;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    e.preventDefault();
+  }, [panelWidth]);
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!isDraggingRef.current) return;
+      const delta = dragStartXRef.current - e.clientX;
+      const next = Math.max(260, Math.min(640, dragStartWidthRef.current + delta));
+      setPanelWidth(next);
+    };
+    const onUp = () => {
+      if (!isDraggingRef.current) return;
+      isDraggingRef.current = false;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+    return () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+  }, []);
 
   const fetchStats = useCallback(async () => {
     try {
@@ -413,9 +448,25 @@ export default function DashboardPage({ campaignId }: { campaignId?: string }) {
         </div>
       </div>
 
+      {/* ───── Resize handle ───── */}
+      {panelOpen && (
+        <div
+          onMouseDown={handleResizeStart}
+          className="w-[5px] shrink-0 relative group cursor-col-resize hover:bg-primary/20 transition-colors z-10"
+          title="Drag to resize"
+        >
+          {/* Visual grip dots */}
+          <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 flex flex-col items-center justify-center gap-[3px] opacity-0 group-hover:opacity-100 transition-opacity">
+            {[0, 1, 2, 3, 4].map(i => (
+              <div key={i} className="w-[3px] h-[3px] rounded-full bg-muted-foreground/60" />
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* ───── RIGHT: AI Panel ───── */}
       {panelOpen ? (
-        <div className="w-[360px] shrink-0 flex flex-col border-l border-border bg-card/20">
+        <div className="shrink-0 flex flex-col border-l border-border bg-card/20" style={{ width: panelWidth }}>
 
           {/* Header */}
           <div className="flex items-center justify-between px-4 h-10 border-b border-border shrink-0">
