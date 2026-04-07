@@ -6,7 +6,13 @@ import { toast } from "sonner";
 import { Send, Loader2, Users, UserCheck, Inbox, Calendar, Copy, Check, ChevronRight, ChevronDown, ThumbsUp, ThumbsDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-interface Message { role: "user" | "assistant"; content: string; thinking?: string[] }
+interface Segment {
+  type: "thinking" | "text";
+  steps?: string[];
+  content?: string;
+  done: boolean;
+}
+interface Message { role: "user" | "assistant"; content: string; segments?: Segment[] }
 interface Stats { total: number; toContact: number; invited: number; connected: number; replied: number; meetings: number }
 interface PriorityItem {
   contactId: string;
@@ -164,8 +170,7 @@ export default function ChatPage({ campaignId }: { campaignId?: string }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [streamingContent, setStreamingContent] = useState("");
-  const [thinkingSteps, setThinkingSteps] = useState<string[]>([]);
+  const [liveSegments, setLiveSegments] = useState<Segment[]>([]);
   const [history, setHistory] = useState<Array<{ role: string; content: string }>>([]);
   const [stats, setStats] = useState<Stats>({ total: 0, toContact: 0, invited: 0, connected: 0, replied: 0, meetings: 0 });
   const [priorities, setPriorities] = useState<PriorityItem[]>([]);
@@ -181,7 +186,7 @@ export default function ChatPage({ campaignId }: { campaignId?: string }) {
     setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
   }, []);
 
-  useEffect(scrollToBottom, [messages, streamingContent, thinkingSteps, scrollToBottom]);
+  useEffect(scrollToBottom, [messages, liveSegments, scrollToBottom]);
 
   const fetchStats = useCallback(async () => {
     try {
@@ -226,8 +231,7 @@ export default function ChatPage({ campaignId }: { campaignId?: string }) {
     setInput("");
     setMessages(prev => [...prev, { role: "user", content: msg }]);
     setLoading(true);
-    setStreamingContent("");
-    setThinkingSteps([]);
+    setLiveSegments([]);
 
     try {
       const res = await fetch("/api/chat", {
@@ -250,7 +254,11 @@ export default function ChatPage({ campaignId }: { campaignId?: string }) {
       const decoder = new TextDecoder();
       let buffer = "";
       let fullContent = "";
-      const steps: string[] = [];
+      // Local mutable copy — synced to React state on every event
+      let segs: Segment[] = [];
+
+      const pushSeg = (s: Segment) => { segs = [...segs, s]; };
+      const replaceLast = (s: Segment) => { segs = [...segs.slice(0, -1), s]; };
 
       while (true) {
         const { done, value } = await reader.read();
@@ -265,18 +273,40 @@ export default function ChatPage({ campaignId }: { campaignId?: string }) {
           try {
             const { type, data } = JSON.parse(line.substring(6));
             switch (type) {
-              case "thinking":
-                steps.push(data);
-                setThinkingSteps([...steps]);
+              case "thinking": {
+                const last = segs[segs.length - 1];
+                if (last?.type === "thinking" && !last.done) {
+                  replaceLast({ ...last, steps: [...(last.steps || []), data] });
+                } else {
+                  pushSeg({ type: "thinking", steps: [data], done: false });
+                }
+                setLiveSegments([...segs]);
                 break;
-              case "content":
+              }
+              case "content": {
                 fullContent += data;
-                setStreamingContent(fullContent);
+                // Collapse any open thinking segment
+                const last = segs[segs.length - 1];
+                if (last?.type === "thinking" && !last.done) {
+                  replaceLast({ ...last, done: true });
+                }
+                // Append to open text segment or start a new one
+                const last2 = segs[segs.length - 1];
+                if (last2?.type === "text") {
+                  replaceLast({ ...last2, content: (last2.content || "") + data });
+                } else {
+                  pushSeg({ type: "text", content: data, done: false });
+                }
+                setLiveSegments([...segs]);
                 break;
-              case "clear":
+              }
+              case "clear": {
                 fullContent = "";
-                setStreamingContent("");
+                // Mark all thinking as done; drop any partial text segments
+                segs = segs.map(s => ({ ...s, done: true }));
+                setLiveSegments([...segs]);
                 break;
+              }
               case "error":
                 toast.error(data);
                 if (!fullContent) fullContent = data;
@@ -289,7 +319,8 @@ export default function ChatPage({ campaignId }: { campaignId?: string }) {
       }
 
       if (fullContent) {
-        setMessages(prev => [...prev, { role: "assistant", content: fullContent, thinking: steps.length > 0 ? steps : undefined }]);
+        const finalSegments = segs.map(s => ({ ...s, done: true }));
+        setMessages(prev => [...prev, { role: "assistant", content: fullContent, segments: finalSegments }]);
         setHistory(prev => [...prev, { role: "user", content: msg }, { role: "assistant", content: fullContent }].slice(-30));
         fetchStats();
         fetchPriorities();
@@ -297,8 +328,7 @@ export default function ChatPage({ campaignId }: { campaignId?: string }) {
     } catch { toast.error("Connection failed"); }
 
     setLoading(false);
-    setStreamingContent("");
-    setThinkingSteps([]);
+    setLiveSegments([]);
     setTimeout(() => inputRef.current?.focus(), 100);
   };
 
@@ -424,13 +454,20 @@ export default function ChatPage({ campaignId }: { campaignId?: string }) {
                 </div>
               ) : (
                 <div className="space-y-1">
-                  {/* Thinking steps — collapsed by default after response */}
-                  {msg.thinking && msg.thinking.length > 0 && (
-                    <TaskGroup steps={msg.thinking} />
-                  )}
-                  {/* Response */}
-                  <div className="flex items-start gap-2">
+                  {/* Interleaved segments — thinking groups + text blocks in order */}
+                  {msg.segments && msg.segments.length > 0 ? (
+                    msg.segments.map((seg, si) =>
+                      seg.type === "thinking" ? (
+                        <TaskGroup key={si} steps={seg.steps || []} />
+                      ) : (
+                        <div key={si} className="text-sm text-foreground leading-relaxed max-w-none prose-agent" dangerouslySetInnerHTML={{ __html: fmtMd(seg.content || "") }} />
+                      )
+                    )
+                  ) : (
                     <div className="text-sm text-foreground leading-relaxed max-w-none prose-agent" dangerouslySetInnerHTML={{ __html: fmtMd(msg.content) }} />
+                  )}
+                  {/* Copy button aligned to last text segment */}
+                  <div className="flex items-start gap-2">
                     <CopyButton text={msg.content} />
                   </div>
                   {/* Rating buttons */}
@@ -492,26 +529,31 @@ export default function ChatPage({ campaignId }: { campaignId?: string }) {
             </div>
           ))}
 
-          {/* Live streaming */}
+          {/* Live streaming — interleaved segments in order of occurrence */}
           {loading && (
             <div className="space-y-1">
-              {/* Live thinking steps */}
-              {thinkingSteps.length > 0 && (
-                <LiveTaskGroup steps={thinkingSteps} />
-              )}
-
-              {/* Streaming response */}
-              {streamingContent ? (
-                <div className="text-sm text-foreground leading-relaxed prose-agent">
-                  <span dangerouslySetInnerHTML={{ __html: fmtMd(streamingContent) }} />
-                  <span className="inline-block w-[2px] h-[14px] bg-foreground/70 animate-pulse ml-0.5 align-middle" />
-                </div>
-              ) : !thinkingSteps.length ? (
+              {liveSegments.length === 0 && (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
                   <span>Thinking...</span>
                 </div>
-              ) : null}
+              )}
+              {liveSegments.map((seg, i) => {
+                const isLastSeg = i === liveSegments.length - 1;
+                if (seg.type === "thinking") {
+                  return seg.done
+                    ? <TaskGroup key={i} steps={seg.steps || []} />
+                    : <LiveTaskGroup key={i} steps={seg.steps || []} />;
+                }
+                return (
+                  <div key={i} className="text-sm text-foreground leading-relaxed prose-agent">
+                    <span dangerouslySetInnerHTML={{ __html: fmtMd(seg.content || "") }} />
+                    {isLastSeg && (
+                      <span className="inline-block w-[2px] h-[14px] bg-foreground/70 animate-pulse ml-0.5 align-middle" />
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
 
