@@ -15,6 +15,10 @@ import {
   reactivateStalePipeline,
   runMessageExperiment,
 } from "@/lib/revenue-ops";
+import { generateTool, generateWidget, getDynamicToolDefinitions } from "@/lib/tool-generation-agent";
+import { executeDynamicTool } from "@/lib/dynamic-tool-dispatcher";
+
+export { getDynamicToolDefinitions };
 
 export interface ToolResult {
   success: boolean;
@@ -63,6 +67,13 @@ export function getToolDefinitions() {
     // ===== SELF-HEALING =====
     { type: "function" as const, function: { name: "diagnose_and_fix", description: "Diagnose an error from a failed tool, attempt auto-fix, and provide clear instructions. Call this when any tool returns success:false.", parameters: { type: "object", properties: { error_message: { type: "string", description: "The error message from the failed tool" }, failed_tool: { type: "string", description: "Name of the tool that failed" }, context: { type: "string", description: "Additional context about what was being attempted" } }, required: ["error_message", "failed_tool"] } } },
     { type: "function" as const, function: { name: "check_system_health", description: "Pre-flight check: verify OpenRouter, Unipile/LinkedIn, rate limits, and campaign config are all working before executing tasks", parameters: { type: "object", properties: {} } } },
+    // ===== SELF-EXTENSION: DYNAMIC TOOLS & WIDGETS =====
+    { type: "function" as const, function: { name: "create_tool", description: "CREATE A NEW CUSTOM TOOL on demand. Describe what you want the tool to do in plain English. The generation agent will design and build it using the harness framework (READ→THINK→WRITE→VALIDATE). The tool is immediately available after creation.", parameters: { type: "object", properties: { request: { type: "string", description: "Plain English description of the tool to create — what it should do, what data it queries, what analysis it performs" }, campaign_id: { type: "string", description: "Optional: scope the tool to a specific campaign context" } }, required: ["request"] } } },
+    { type: "function" as const, function: { name: "list_dynamic_tools", description: "List all custom tools created for this account", parameters: { type: "object", properties: {} } } },
+    { type: "function" as const, function: { name: "delete_dynamic_tool", description: "Delete (deactivate) a custom tool by name", parameters: { type: "object", properties: { tool_name: { type: "string", description: "Name of the custom tool to delete" } }, required: ["tool_name"] } } },
+    { type: "function" as const, function: { name: "create_widget", description: "ADD A CUSTOM WIDGET to the dashboard. Describe what metric or chart you want displayed. The widget appears on the campaign dashboard (or global dashboard if no campaign_id).", parameters: { type: "object", properties: { request: { type: "string", description: "Plain English description of the widget — what metric, chart, or table to show" }, campaign_id: { type: "string", description: "Campaign dashboard to add the widget to (omit for global dashboard)" } }, required: ["request"] } } },
+    { type: "function" as const, function: { name: "list_widgets", description: "List all custom dashboard widgets for this account", parameters: { type: "object", properties: { campaign_id: { type: "string", description: "Filter to a specific campaign's widgets (omit for all)" } } } } },
+    { type: "function" as const, function: { name: "delete_widget", description: "Remove a dashboard widget by ID", parameters: { type: "object", properties: { widget_id: { type: "string", description: "ID of the widget to remove" } }, required: ["widget_id"] } } },
   ];
 }
 
@@ -1002,7 +1013,107 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
       };
     }
 
-    default:
+    // ===== SELF-EXTENSION TOOLS =====
+
+    case "create_tool": {
+      const request = (args.request as string) || "";
+      if (!request) return { success: false, message: "Provide a description of the tool to create." };
+      if (!settings?.openrouterApiKey) return { success: false, message: "OpenRouter API key not configured." };
+
+      progress("🏗️ Starting tool generation harness (READ→THINK→WRITE→VALIDATE)...");
+      const result = await generateTool(
+        userId,
+        request,
+        settings.openrouterApiKey,
+        settings.preferredModel || "anthropic/claude-sonnet-4",
+        (msg) => progress(msg)
+      );
+      return result;
+    }
+
+    case "list_dynamic_tools": {
+      const tools = await prisma.dynamicTool.findMany({
+        where: { userId, isActive: true },
+        orderBy: { createdAt: "desc" },
+      });
+      if (tools.length === 0) {
+        return { success: true, data: [], message: "No custom tools yet. Use `create_tool` to build one." };
+      }
+      const lines = tools.map(t =>
+        `• **${t.name}** — ${t.description}\n  Handler: \`${t.handlerType}\` | Created: ${t.createdAt.toLocaleDateString()}`
+      );
+      return { success: true, data: tools, message: `**${tools.length} custom tool${tools.length > 1 ? "s" : ""}:**\n\n${lines.join("\n\n")}` };
+    }
+
+    case "delete_dynamic_tool": {
+      const toolName = (args.tool_name as string) || "";
+      if (!toolName) return { success: false, message: "Provide the tool name to delete." };
+      const tool = await prisma.dynamicTool.findFirst({ where: { userId, name: toolName } });
+      if (!tool) return { success: false, message: `No custom tool named '${toolName}' found.` };
+      await prisma.dynamicTool.update({ where: { id: tool.id }, data: { isActive: false } });
+      return { success: true, message: `✅ Tool \`${toolName}\` has been removed.` };
+    }
+
+    case "create_widget": {
+      const request = (args.request as string) || "";
+      if (!request) return { success: false, message: "Provide a description of the widget to create." };
+      if (!settings?.openrouterApiKey) return { success: false, message: "OpenRouter API key not configured." };
+
+      const campaignIdArg = (args.campaign_id as string) || undefined;
+      progress("🎨 Starting widget generation harness (READ→THINK→WRITE→VALIDATE)...");
+      const result = await generateWidget(
+        userId,
+        campaignIdArg,
+        request,
+        settings.openrouterApiKey,
+        settings.preferredModel || "anthropic/claude-sonnet-4",
+        (msg) => progress(msg)
+      );
+      return result;
+    }
+
+    case "list_widgets": {
+      const campaignIdArg = (args.campaign_id as string) || undefined;
+      const where = campaignIdArg
+        ? { userId, campaignId: campaignIdArg, isActive: true }
+        : { userId, isActive: true };
+      const widgets = await prisma.dynamicWidget.findMany({ where, orderBy: { sortOrder: "asc" } });
+      if (widgets.length === 0) {
+        return { success: true, data: [], message: "No custom widgets yet. Use `create_widget` to add one to your dashboard." };
+      }
+      const lines = widgets.map(w =>
+        `• **${w.name}** (\`${w.widgetType}\`) — ${w.description || "no description"} | ID: \`${w.id}\``
+      );
+      return { success: true, data: widgets, message: `**${widgets.length} widget${widgets.length > 1 ? "s" : ""}:**\n\n${lines.join("\n")}` };
+    }
+
+    case "delete_widget": {
+      const widgetId = (args.widget_id as string) || "";
+      if (!widgetId) return { success: false, message: "Provide the widget ID to delete." };
+      const widget = await prisma.dynamicWidget.findFirst({ where: { id: widgetId, userId } });
+      if (!widget) return { success: false, message: `No widget with ID '${widgetId}' found.` };
+      await prisma.dynamicWidget.update({ where: { id: widgetId }, data: { isActive: false } });
+      return { success: true, message: `✅ Widget **${widget.name}** removed from dashboard.` };
+    }
+
+    default: {
+      // Try dynamic tool dispatch
+      const dynamicTool = await prisma.dynamicTool.findFirst({ where: { userId, name, isActive: true } });
+      if (dynamicTool) {
+        if (!settings?.openrouterApiKey) return { success: false, message: "OpenRouter API key not configured." };
+        progress(`Running custom tool: ${dynamicTool.name}...`);
+        return executeDynamicTool(
+          dynamicTool.handlerType,
+          dynamicTool.handlerConfig,
+          {
+            userId,
+            args,
+            apiKey: settings.openrouterApiKey,
+            model: settings.preferredModel || "anthropic/claude-sonnet-4",
+          }
+        );
+      }
       return { success: false, message: `Unknown tool: ${name}` };
+    }
   }
 }

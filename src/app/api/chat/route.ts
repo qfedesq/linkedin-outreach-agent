@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { generateGreeting } from "@/lib/agent";
 import { logActivity } from "@/lib/activity-log";
 import { decrypt } from "@/lib/encryption";
-import { getToolDefinitions, executeTool, ToolResult, ProgressCallback } from "@/lib/agent-tools";
+import { getToolDefinitions, executeTool, ToolResult, ProgressCallback, getDynamicToolDefinitions } from "@/lib/agent-tools";
 import { clearAgentStatus } from "@/lib/agent-status";
 import { diagnoseError } from "@/lib/self-heal";
 
@@ -32,7 +32,12 @@ export async function POST(request: Request) {
       try {
         const apiKey = decrypt(user.settings!.openrouterApiKey!);
         const model = user.settings!.preferredModel;
-        const tools = getToolDefinitions();
+        // Merge static + dynamic (user-created) tool definitions
+        const [staticTools, dynamicTools] = await Promise.all([
+          Promise.resolve(getToolDefinitions()),
+          getDynamicToolDefinitions(user.id),
+        ]);
+        const tools = [...staticTools, ...dynamicTools];
 
         const knowledge = await prisma.agentKnowledge.findMany({ where: { userId: user.id }, take: 30, orderBy: { createdAt: "desc" } });
         const knowledgeText = knowledge.map(k => `- [${k.category}] ${k.content}`).join("\n");

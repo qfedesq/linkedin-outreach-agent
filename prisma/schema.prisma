@@ -189,3 +189,46 @@ model ContactInsight {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 }
+
+// ===== SELF-EXTENSION: DYNAMIC TOOLS & WIDGETS =====
+
+model DynamicTool {
+  id            String   @id @default(cuid())
+  userId        String
+  name          String   // snake_case function name — must be unique per user
+  description   String   // shown to the LLM agent
+  parameters    Json     // OpenAI function parameters schema (JSON Schema object)
+  handlerType   String   // "prisma_query" | "llm_analysis" | "composite" | "http_fetch"
+  handlerConfig Json     // DSL config for execution (type-specific)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([userId, name])
+}
+
+model DynamicWidget {
+  id            String   @id @default(cuid())
+  userId        String
+  campaignId    String?  // null = global dashboard, set = campaign dashboard
+  name          String
+  description   String?
+  widgetType    String   // "stat_card" | "bar_chart" | "table" | "funnel" | "kpi_grid"
+  dataConfig    Json     // prisma_query DSL config for fetching data
+  displayConfig Json     // rendering options (title, columns, colors, etc.)
+  isActive      Boolean  @default(true)
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model ToolGenerationLog {
+  id         String   @id @default(cuid())
+  userId     String
+  toolName   String?
+  prompt     String
+  iterations Int      @default(0)
+  status     String   @default("generating") // "generating" | "validating" | "active" | "failed"
+  errorLog   String?
+  createdAt  DateTime @default(now())
+}
