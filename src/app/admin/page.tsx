@@ -97,12 +97,73 @@ export default function AdminPage() {
     if (selectedUserId) fetchUserLogs(selectedUserId, logsFilter, logOffset);
   }, [selectedUserId, logsFilter, logOffset, fetchUserLogs]);
 
+  const [downloading, setDownloading] = useState(false);
+
   const toggleExpand = (id: string) => {
     setExpandedEvents(prev => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
+  };
+
+  const downloadFullLog = async () => {
+    if (!selectedUserId || !data) return;
+    setDownloading(true);
+    try {
+      // Fetch ALL events (no pagination limit)
+      const res = await fetch(`/api/admin/user-logs?userId=${selectedUserId}&type=${logsFilter}&offset=0&limit=300`);
+      const d = await res.json();
+      const allEvents: TimelineEvent[] = d.events || [];
+
+      // If there are more pages, fetch them all
+      if (d.total > 300) {
+        let offset = 300;
+        while (offset < d.total) {
+          const r2 = await fetch(`/api/admin/user-logs?userId=${selectedUserId}&type=${logsFilter}&offset=${offset}&limit=300`);
+          const d2 = await r2.json();
+          allEvents.push(...(d2.events || []));
+          offset += 300;
+        }
+      }
+
+      const user = data.users.find(u => u.id === selectedUserId);
+      const userName = user?.name || user?.email || selectedUserId;
+      const timestamp = new Date().toISOString().slice(0, 16).replace("T", "_").replace(":", "h");
+
+      // Build a readable text log — easy to paste into chat
+      const lines: string[] = [
+        `# Activity Log — ${userName}`,
+        `# Exported: ${new Date().toISOString()}`,
+        `# Total events: ${allEvents.length} | Filter: ${logsFilter}`,
+        `# ─────────────────────────────────────────`,
+        "",
+      ];
+
+      for (const ev of allEvents) {
+        const ts = new Date(ev.createdAt).toISOString().replace("T", " ").slice(0, 19);
+        if (ev.type === "chat") {
+          lines.push(`[${ts}] CHAT/${ev.role.toUpperCase()}${ev.campaignId ? ` [campaign:${ev.campaignId.slice(-6)}]` : ""}`);
+          lines.push(ev.content);
+          lines.push("");
+        } else {
+          const status = ev.success ? "OK" : "FAIL";
+          lines.push(`[${ts}] EXEC/${ev.action.toUpperCase()} [${status}]${ev.errorCode ? ` errorCode=${ev.errorCode}` : ""}${ev.duration ? ` ${ev.duration}ms` : ""}`);
+          if (ev.request) lines.push(`  REQ: ${ev.request.slice(0, 300)}`);
+          if (ev.response) lines.push(`  RES: ${ev.response.slice(0, 300)}`);
+          lines.push("");
+        }
+      }
+
+      const blob = new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `log_${userName.replace(/\s+/g, "_").toLowerCase()}_${timestamp}.txt`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {}
+    setDownloading(false);
   };
 
   if (!session) return <div className="flex items-center justify-center h-screen text-muted-foreground">Loading session...</div>;
@@ -349,18 +410,30 @@ export default function AdminPage() {
                   <option key={u.id} value={u.id}>{u.name || u.email.split("@")[0]} ({u.email})</option>
                 ))}
               </select>
-              {/* Filter tabs */}
+              {/* Filter tabs + download */}
               {selectedUserId && (
-                <div className="flex gap-1">
-                  {(["all", "chat", "execution", "errors"] as const).map(f => (
-                    <button
-                      key={f}
-                      onClick={() => { setLogsFilter(f); setLogOffset(0); }}
-                      className={`text-xs px-2.5 py-1 rounded-md border transition-colors ${logsFilter === f ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:text-foreground"}`}
-                    >
-                      {f === "all" ? "All" : f === "chat" ? "Chat" : f === "execution" ? "Tools" : "Errors"}
-                    </button>
-                  ))}
+                <div className="flex items-center gap-2">
+                  <div className="flex gap-1">
+                    {(["all", "chat", "execution", "errors"] as const).map(f => (
+                      <button
+                        key={f}
+                        onClick={() => { setLogsFilter(f); setLogOffset(0); }}
+                        className={`text-xs px-2.5 py-1 rounded-md border transition-colors ${logsFilter === f ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:text-foreground"}`}
+                      >
+                        {f === "all" ? "All" : f === "chat" ? "Chat" : f === "execution" ? "Tools" : "Errors"}
+                      </button>
+                    ))}
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={downloadFullLog}
+                    disabled={downloading || logsLoading}
+                    className="h-7 text-xs gap-1.5"
+                  >
+                    <Download className="w-3 h-3" />
+                    {downloading ? "Downloading..." : `Download log`}
+                  </Button>
                 </div>
               )}
             </div>
