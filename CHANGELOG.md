@@ -5,6 +5,52 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version increments by +0.1 on every merge to `main`.
 
+## [1.2.8] - 2026-04-07
+
+### Added
+- **Data-aware dynamic suggestions**: Chat empty state now shows 8 suggestions ranked by urgency based on live pipeline stats. Suggestions adapt to actual contact counts: `replied > 0` surfaces reply strategy first, `connected > 0` surfaces follow-ups, `meetings > 0` surfaces meeting brief, `toContact > 0` surfaces scoring. Revenue-operator tools (account map, message experiments, reactivation) appear only when enough data exists. Each suggestion shows a color-coded tag badge and sends an optimized agent message.
+- `toContact` stat added to pipeline stats bar fetch in chat.
+
+## [1.2.7] - 2026-04-07
+
+### Changed
+- **Structured response format** in agent system prompt: Agent now uses bold headers, backtick highlights for tool names/IDs/statuses, bullet-point structure, and a one-line bold summary sentence on every result. Error format: bold Error header → tool → what failed → fix. Responses are scannable, not prose walls.
+
+## [1.2.6] - 2026-04-07
+
+### Added
+- **Download full user activity log**: Admin panel now has a Download button next to the log filter tabs when a user is selected. Fetches all pages of the timeline and exports as `.txt` with format `[timestamp] TYPE/ACTION [PASS|FAIL] errorCode=...`. Designed for pasting directly into chat for fast debugging.
+
+## [1.2.5] - 2026-04-07
+
+### Fixed (from Andrei's session log analysis — 452 events reviewed)
+- **`score_contacts` blocked by unassigned contacts**: Separated unassigned from assignable contacts. Unassigned are skipped with count + fix hint. Uses `GENERIC_ICP` fallback when campaign has no ICP definition.
+- **`discover_prospects` stale campaign ID loops**: Error now includes the full valid campaign list inline. Agent uses them immediately without calling `list_campaigns` again.
+- **New `merge_campaigns` tool**: Moves all contacts from source to target campaign, optionally deletes source. Resolves by name if ID not found.
+- **New `assign_contacts_to_campaign` tool**: Bulk-assigns unassigned contacts to a campaign by name or ID. Must be called before `score_contacts`.
+- **System prompt CAMPAIGN ID RULES block**: Never use stale campaign IDs from history. Always verify or call `list_campaigns` first.
+
+## [1.2.4] - 2026-04-07
+
+### Added
+- **Admin User Activity Log**: Per-user timeline merging `ChatMessage` + `ExecutionLog` into a unified chronological view. Color-coded rows (chat / tool success / tool failure / debug). Expandable request/response JSON. Filter tabs: All / Chat / Tools / Errors. Pagination at 100 events/page.
+- **New API**: `GET /api/admin/user-logs`
+- **Chat thumbs up/down feedback**: Each assistant response shows thumbs icons on hover. Up → silent `positive_signal` saved to `AgentKnowledge`. Down → inline form → saves `correction` entry → agent learns in future sessions.
+- **New API**: `POST /api/chat/feedback`
+
+## [1.2.3] - 2026-04-07
+
+### Fixed
+- **Contacts owner filter broken across pages**: Owner dropdown was built from the current page's 50 contacts only. Fix: dedicated `allOwners` query over the full unfiltered table, always returned alongside paginated results regardless of active filters.
+
+## [1.2.2] - 2026-04-07
+
+### Added
+- **Revenue operator tools** (7 new strategic tools): `prioritize_pipeline_by_expected_value`, `build_account_map`, `draft_reply_strategy`, `run_message_experiment`, `reactivate_stale_pipeline`, `prepare_meeting_brief`, `list_message_experiments`. Revenue operator surfaces added to Chat and Performance pages.
+
+### Fixed
+- **Login SSR hydration error**: Fixed loading state mismatch during server-side rendering on the login page.
+
 ## [1.2.1] - 2026-04-06
 
 ### Changed
