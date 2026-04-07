@@ -1,12 +1,20 @@
 import { prisma } from "@/lib/prisma";
-import { decrypt } from "@/lib/encryption";
 import { callLLM, getIcpScoringPrompt, getConnectionNotePrompt, getFollowupPrompt, CampaignContext } from "@/lib/llm";
 import { createLinkedIn } from "@/lib/linkedin-provider";
 import { logActivity } from "@/lib/activity-log";
 import { setAgentStatus } from "@/lib/agent-status";
 import { canPerformAction, canInviteContact, canFollowupContact, humanDelay, getUsageSummary } from "@/lib/linkedin-limits";
 import { createContactSafe, checkGlobalDuplicate } from "@/lib/contact-dedup";
-import { diagnoseError, healError, checkSystemHealth } from "@/lib/self-heal";
+import { healError, checkSystemHealth } from "@/lib/self-heal";
+import {
+  buildAccountMap,
+  draftReplyStrategy,
+  listMessageExperiments,
+  prepareMeetingBrief,
+  prioritizePipelineByExpectedValue,
+  reactivateStalePipeline,
+  runMessageExperiment,
+} from "@/lib/revenue-ops";
 
 export interface ToolResult {
   success: boolean;
@@ -35,6 +43,13 @@ export function getToolDefinitions() {
     { type: "function" as const, function: { name: "learn", description: "Save a learning/insight to the knowledge base (persists across sessions)", parameters: { type: "object", properties: { category: { type: "string", enum: ["message_style","icp_insight","strategy","correction"] }, content: { type: "string", description: "The learning to remember" } }, required: ["category","content"] } } },
     { type: "function" as const, function: { name: "get_knowledge", description: "Read all accumulated knowledge/learnings from past sessions", parameters: { type: "object", properties: {} } } },
     { type: "function" as const, function: { name: "get_usage_limits", description: "Check current LinkedIn usage vs safety limits (invites today/week, messages, searches)", parameters: { type: "object", properties: {} } } },
+    { type: "function" as const, function: { name: "prioritize_pipeline_by_expected_value", description: "Rank contacts and accounts by expected meeting value and suggest the best next action right now.", parameters: { type: "object", properties: { campaign_id: { type: "string" }, limit: { type: "number" }, include_reasons: { type: "boolean" } } } } },
+    { type: "function" as const, function: { name: "build_account_map", description: "Group contacts by account, show buying-committee coverage, and suggest the next account-level move.", parameters: { type: "object", properties: { campaign_id: { type: "string" }, company: { type: "string" }, limit: { type: "number" } } } } },
+    { type: "function" as const, function: { name: "draft_reply_strategy", description: "Analyze an inbound reply and generate the best next response strategy and draft without sending anything.", parameters: { type: "object", properties: { contact_id: { type: "string" }, campaign_id: { type: "string" }, message_text: { type: "string" } } } } },
+    { type: "function" as const, function: { name: "run_message_experiment", description: "Design and save a structured messaging experiment for a campaign.", parameters: { type: "object", properties: { campaign_id: { type: "string" }, experiment_goal: { type: "string" }, audience_filter: { type: "string" }, variant_count: { type: "number" } }, required: ["campaign_id"] } } },
+    { type: "function" as const, function: { name: "reactivate_stale_pipeline", description: "Find stale contacts worth reopening and generate reactivation angles and drafts.", parameters: { type: "object", properties: { campaign_id: { type: "string" }, days_stale: { type: "number" }, limit: { type: "number" } } } } },
+    { type: "function" as const, function: { name: "prepare_meeting_brief", description: "Prepare a meeting brief for a contact with history, likely pains, objections, and talk track.", parameters: { type: "object", properties: { contact_id: { type: "string" } }, required: ["contact_id"] } } },
+    { type: "function" as const, function: { name: "list_message_experiments", description: "List saved messaging experiments, optionally filtered by campaign.", parameters: { type: "object", properties: { campaign_id: { type: "string" } } } } },
     // ===== CAMPAIGN MANAGEMENT =====
     { type: "function" as const, function: { name: "create_campaign", description: "Create a new outreach campaign with name, description, ICP, and strategy", parameters: { type: "object", properties: { name: { type: "string", description: "Campaign name" }, description: { type: "string", description: "Campaign description" }, icpDefinition: { type: "string", description: "ICP scoring criteria" }, strategyNotes: { type: "string", description: "Outreach strategy and messaging notes" }, calendarUrl: { type: "string", description: "Calendar booking URL" } }, required: ["name"] } } },
     { type: "function" as const, function: { name: "list_campaigns", description: "List all campaigns with their IDs, status, and contact counts. ALWAYS call this first when you need a campaign_id.", parameters: { type: "object", properties: {} } } },
@@ -92,6 +107,66 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
       const acceptRate = sent > 0 ? Math.round(connected / sent * 100) : 0;
       const replyRate = connected > 0 ? Math.round(replied / connected * 100) : 0;
       return { success: true, data: { total, sent, connected, replied, meetings, acceptRate, replyRate }, message: `Sent ${sent} invites | ${connected} accepted (${acceptRate}%) | ${replied} replied (${replyRate}%) | ${meetings} meetings` };
+    }
+
+    case "prioritize_pipeline_by_expected_value": {
+      const result = await prioritizePipelineByExpectedValue(userId, {
+        campaignId: (args.campaign_id as string) || null,
+        limit: (args.limit as number) || 10,
+        includeReasons: args.include_reasons !== false,
+      });
+      return { success: true, data: result.priorities, message: result.message };
+    }
+
+    case "build_account_map": {
+      const result = await buildAccountMap(userId, {
+        campaignId: (args.campaign_id as string) || null,
+        company: (args.company as string) || null,
+        limit: (args.limit as number) || 10,
+      });
+      return { success: true, data: result.accounts, message: result.message };
+    }
+
+    case "draft_reply_strategy": {
+      const result = await draftReplyStrategy(userId, {
+        contactId: (args.contact_id as string) || null,
+        campaignId: (args.campaign_id as string) || null,
+        messageText: (args.message_text as string) || null,
+      });
+      return { success: true, data: result.result, message: result.message };
+    }
+
+    case "run_message_experiment": {
+      const result = await runMessageExperiment(userId, {
+        campaignId: args.campaign_id as string,
+        experimentGoal: (args.experiment_goal as string) || null,
+        audienceFilter: (args.audience_filter as string) || null,
+        variantCount: (args.variant_count as number) || 3,
+      });
+      if (!result.experiment) return { success: false, message: result.message };
+      return { success: true, data: result.experiment, message: result.message };
+    }
+
+    case "reactivate_stale_pipeline": {
+      const result = await reactivateStalePipeline(userId, {
+        campaignId: (args.campaign_id as string) || null,
+        daysStale: (args.days_stale as number) || 21,
+        limit: (args.limit as number) || 10,
+      });
+      return { success: true, data: result.contacts, message: result.message };
+    }
+
+    case "prepare_meeting_brief": {
+      const contactId = args.contact_id as string | undefined;
+      if (!contactId) return { success: false, message: "contact_id is required" };
+      const result = await prepareMeetingBrief(userId, contactId);
+      if (!result.brief) return { success: false, message: result.message };
+      return { success: true, data: result.brief, message: result.message };
+    }
+
+    case "list_message_experiments": {
+      const experiments = await listMessageExperiments(userId, (args.campaign_id as string) || null);
+      return { success: true, data: experiments, message: experiments.length === 0 ? "No message experiments saved yet." : `Found ${experiments.length} saved experiment${experiments.length > 1 ? "s" : ""}.` };
     }
 
     // ===== KNOWLEDGE TOOLS =====
@@ -325,7 +400,7 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
         } catch {
           msg = `${c.name.split(" ")[0]} — would love to connect about ${campCtx.campaignName}. Open to a quick chat?`.substring(0, 200);
         }
-        const item = await prisma.inviteBatchItem.create({ data: { batchId: batch.id, contactId: c.id, draftMessage: msg, approved: true } });
+        await prisma.inviteBatchItem.create({ data: { batchId: batch.id, contactId: c.id, draftMessage: msg, approved: true } });
         items.push({ name: c.name, company: c.company, fit: c.profileFit, message: msg });
       }
 

@@ -163,3 +163,29 @@ model Campaign {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 }
+
+model MessageExperiment {
+  id            String   @id @default(cuid())
+  userId        String
+  campaignId    String?
+  goal          String
+  audienceFilter String?
+  hypothesis    String
+  variantsJson  Json
+  successMetric String
+  status        String   @default("DRAFT")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model ContactInsight {
+  id         String   @id @default(cuid())
+  userId     String
+  contactId  String
+  campaignId String?
+  kind       String
+  summary    String
+  payloadJson Json
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}

@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
 import {
-  Activity, CheckCircle, XCircle, Info,
+  Activity, CheckCircle, XCircle,
   Play, Search, Loader2, Users, Send, Inbox, UserCheck,
   Sparkles, RefreshCw, MessageSquare,
 } from "lucide-react";
@@ -77,7 +77,20 @@ export default function CommandCenter() {
     } catch {}
   }, []);
 
-  useEffect(() => { fetchLogs(); fetchStats(); const i = setInterval(() => { fetchLogs(); fetchStats(); }, 5000); return () => clearInterval(i); }, [fetchLogs, fetchStats]);
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      void fetchLogs();
+      void fetchStats();
+    }, 0);
+    const i = setInterval(() => {
+      void fetchLogs();
+      void fetchStats();
+    }, 5000);
+    return () => {
+      clearTimeout(timeout);
+      clearInterval(i);
+    };
+  }, [fetchLogs, fetchStats]);
   useEffect(() => { const i = setInterval(() => setUptime(u => u + 1), 1000); return () => clearInterval(i); }, []);
 
   // --- Actions ---

@@ -69,7 +69,6 @@ export default function AdminPage() {
   const [expandedEvents, setExpandedEvents] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    setLoading(true);
     if (session?.user?.email === "federico.ledesma@protofire.io") {
       fetch(`/api/admin/stats?period=${period}`)
         .then(r => r.json())
@@ -77,7 +76,8 @@ export default function AdminPage() {
         .catch(() => {})
         .finally(() => setLoading(false));
     } else {
-      setLoading(false);
+      const timeout = setTimeout(() => setLoading(false), 0);
+      return () => clearTimeout(timeout);
     }
   }, [session, period]);
 
@@ -94,7 +94,11 @@ export default function AdminPage() {
   }, []);
 
   useEffect(() => {
-    if (selectedUserId) fetchUserLogs(selectedUserId, logsFilter, logOffset);
+    if (!selectedUserId) return;
+    const timeout = setTimeout(() => {
+      void fetchUserLogs(selectedUserId, logsFilter, logOffset);
+    }, 0);
+    return () => clearTimeout(timeout);
   }, [selectedUserId, logsFilter, logOffset, fetchUserLogs]);
 
   const [downloading, setDownloading] = useState(false);
@@ -205,7 +209,10 @@ export default function AdminPage() {
         <div className="flex items-center gap-3">
           <select
             value={period}
-            onChange={e => setPeriod(e.target.value)}
+            onChange={e => {
+              setLoading(true);
+              setPeriod(e.target.value);
+            }}
             className="text-sm border border-border rounded-lg px-3 py-1.5 bg-card"
           >
             <option value="month">Last 30 days</option>

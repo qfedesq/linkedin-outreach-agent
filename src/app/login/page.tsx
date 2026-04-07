@@ -22,10 +22,13 @@ export default function LoginPage() {
   }, [session, router]);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("error") === "AccessDenied") {
-      setError("Access restricted to Protofire team members (@protofire.io)");
-    }
+    const timeout = setTimeout(() => {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("error") === "AccessDenied") {
+        setError("Access restricted to Protofire team members (@protofire.io)");
+      }
+    }, 0);
+    return () => clearTimeout(timeout);
   }, []);
 
   if (status === "loading") {

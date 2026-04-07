@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -40,7 +40,12 @@ export default function LogsPage() {
     setTotal(data.total || 0);
   }, [page, actionFilter, successFilter]);
 
-  useEffect(() => { fetchLogs(); }, [fetchLogs]);
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      void fetchLogs();
+    }, 0);
+    return () => clearTimeout(timeout);
+  }, [fetchLogs]);
 
   const toggleExpand = (id: string) => {
     setExpanded(prev => {
