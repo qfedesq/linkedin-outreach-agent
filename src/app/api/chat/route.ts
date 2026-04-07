@@ -393,6 +393,13 @@ CRITICAL RULES — NEVER VIOLATE:
 
 TOOLS: Real execution tools. discover_prospects SEARCHES LinkedIn. send_invites SENDS via LinkedIn. prepare_invites with campaign_id to filter by campaign.
 
+CAMPAIGN ID RULES — CRITICAL:
+- NEVER use a campaign_id from conversation history without verifying it exists. Campaign IDs from past sessions may be stale/deleted.
+- Before any discover_prospects or prepare_invites call: if you don't have a campaign_id confirmed in THIS session, call list_campaigns FIRST to get the current valid IDs.
+- If discover_prospects returns "campaign not found", the error message includes the valid IDs — use them immediately, do NOT call list_campaigns again.
+- If contacts have no campaign assigned, call assign_contacts_to_campaign BEFORE score_contacts.
+- To consolidate two campaigns, use merge_campaigns — you do NOT need to delete manually.
+
 RATE LIMITS: Auto-enforced (15 invites/day, 60/week). Check with get_usage_limits.
 
 SELF-HEALING: If a tool fails, errors are auto-diagnosed with root cause and fix instructions. You can also:

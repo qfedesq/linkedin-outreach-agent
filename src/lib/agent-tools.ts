@@ -37,10 +37,12 @@ export function getToolDefinitions() {
     { type: "function" as const, function: { name: "get_usage_limits", description: "Check current LinkedIn usage vs safety limits (invites today/week, messages, searches)", parameters: { type: "object", properties: {} } } },
     // ===== CAMPAIGN MANAGEMENT =====
     { type: "function" as const, function: { name: "create_campaign", description: "Create a new outreach campaign with name, description, ICP, and strategy", parameters: { type: "object", properties: { name: { type: "string", description: "Campaign name" }, description: { type: "string", description: "Campaign description" }, icpDefinition: { type: "string", description: "ICP scoring criteria" }, strategyNotes: { type: "string", description: "Outreach strategy and messaging notes" }, calendarUrl: { type: "string", description: "Calendar booking URL" } }, required: ["name"] } } },
-    { type: "function" as const, function: { name: "list_campaigns", description: "List all campaigns with their status and contact counts", parameters: { type: "object", properties: {} } } },
+    { type: "function" as const, function: { name: "list_campaigns", description: "List all campaigns with their IDs, status, and contact counts. ALWAYS call this first when you need a campaign_id.", parameters: { type: "object", properties: {} } } },
     { type: "function" as const, function: { name: "update_campaign", description: "Update a campaign's settings (name, description, ICP, strategy, calendar, limits)", parameters: { type: "object", properties: { campaign_id: { type: "string" }, name: { type: "string" }, description: { type: "string" }, icpDefinition: { type: "string" }, strategyNotes: { type: "string" }, calendarUrl: { type: "string" }, dailyInviteLimit: { type: "number" }, followupDelayDays: { type: "number" }, isActive: { type: "boolean" } }, required: ["campaign_id"] } } },
     { type: "function" as const, function: { name: "delete_campaign", description: "Delete a campaign (contacts are preserved)", parameters: { type: "object", properties: { campaign_id: { type: "string" } }, required: ["campaign_id"] } } },
+    { type: "function" as const, function: { name: "merge_campaigns", description: "Move ALL contacts from one campaign into another, then optionally delete the source. Use to consolidate duplicate campaigns.", parameters: { type: "object", properties: { source_campaign_id: { type: "string", description: "Campaign to merge FROM (its contacts will move to target)" }, target_campaign_id: { type: "string", description: "Campaign to merge INTO" }, delete_source: { type: "boolean", description: "Delete the source campaign after merging (default: true)" } }, required: ["source_campaign_id", "target_campaign_id"] } } },
     // ===== CONTACT MANAGEMENT =====
+    { type: "function" as const, function: { name: "assign_contacts_to_campaign", description: "Bulk-assign unassigned contacts (or all user contacts) to a campaign. Use before score_contacts when contacts have no campaign.", parameters: { type: "object", properties: { campaign_id: { type: "string", description: "Target campaign ID to assign contacts to" }, only_unassigned: { type: "boolean", description: "Only assign contacts that currently have no campaign (default: true)" } }, required: ["campaign_id"] } } },
     { type: "function" as const, function: { name: "delete_contacts", description: "Delete contacts by IDs, by status, or all contacts in a campaign", parameters: { type: "object", properties: { contact_ids: { type: "array", items: { type: "string" }, description: "Specific contact IDs to delete" }, status: { type: "string", description: "Delete all contacts with this status (e.g. TO_CONTACT, UNRESPONSIVE)" }, campaign_id: { type: "string", description: "Delete all contacts in this campaign" }, confirm: { type: "boolean", description: "Must be true to execute bulk deletes" } } } } },
     // ===== SELF-HEALING =====
     { type: "function" as const, function: { name: "diagnose_and_fix", description: "Diagnose an error from a failed tool, attempt auto-fix, and provide clear instructions. Call this when any tool returns success:false.", parameters: { type: "object", properties: { error_message: { type: "string", description: "The error message from the failed tool" }, failed_tool: { type: "string", description: "Name of the tool that failed" }, context: { type: "string", description: "Additional context about what was being attempted" } }, required: ["error_message", "failed_tool"] } } },
@@ -133,7 +135,12 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
           if (campByName) {
             campaignId = campByName.id;
           } else {
-            return { success: false, message: `Campaign "${campaignId}" not found. Use list_campaigns to see available campaigns and their IDs.` };
+            // Inject the actual valid campaign list so LLM can immediately retry with correct ID
+            const allCamps = await prisma.campaign.findMany({ where: { userId }, select: { id: true, name: true }, orderBy: { createdAt: "desc" } });
+            const campList = allCamps.length > 0
+              ? allCamps.map(c => `"${c.name}" → ID: ${c.id}`).join(" | ")
+              : "No campaigns exist yet — create one first with create_campaign.";
+            return { success: false, message: `Campaign "${campaignId}" not found (stale or wrong ID). Valid campaigns: [${campList}]. Use one of these IDs directly — do NOT call list_campaigns again, just retry with the correct ID.` };
           }
         }
       }
@@ -201,10 +208,21 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
       const effectiveLimit = Math.min(requestedLimit, SCORE_MAX);
 
       const totalUnscored = await prisma.contact.count({ where: { userId, fitRationale: null } });
-      const contacts = await prisma.contact.findMany({ where: { userId, fitRationale: null }, take: effectiveLimit });
-      if (contacts.length === 0) return { success: true, message: "All contacts are already scored." };
+      const allUnscored = await prisma.contact.findMany({ where: { userId, fitRationale: null }, take: effectiveLimit });
+      if (allUnscored.length === 0) return { success: true, message: "All contacts are already scored." };
 
-      // Build a cache of campaign ICP definitions
+      // Separate contacts with and without campaign assignment
+      const skippedNoCampaign = allUnscored.filter(c => !c.campaignId);
+      const contacts = allUnscored.filter(c => c.campaignId);
+
+      // If ALL contacts are unassigned, surface a clear fix instead of a silent block
+      if (contacts.length === 0) {
+        const allCamps = await prisma.campaign.findMany({ where: { userId }, select: { id: true, name: true }, orderBy: { createdAt: "desc" } });
+        const campList = allCamps.map(c => `"${c.name}" → ${c.id}`).join(" | ");
+        return { success: false, message: `All ${skippedNoCampaign.length} unscored contacts have no campaign assigned. Fix: call assign_contacts_to_campaign with campaign_id. Available campaigns: [${campList}]` };
+      }
+
+      // Build a cache of campaign ICP definitions (fallback to generic if ICP not set)
       const campaignIcpCache = new Map<string, string | null>();
       const campaignIds = [...new Set(contacts.map(c => c.campaignId).filter(Boolean))];
       for (const cid of campaignIds) {
@@ -212,21 +230,13 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
         campaignIcpCache.set(cid!, camp?.icpDefinition || null);
       }
 
-      // Check if any contacts lack campaign or ICP
-      const noCampaign = contacts.filter(c => !c.campaignId);
-      if (noCampaign.length > 0) {
-        return { success: false, message: `${noCampaign.length} contacts have no campaign assigned. Assign them to a campaign first, then score. Each campaign needs its own ICP definition.` };
+      // Log warning for campaigns without ICP, but don't block — use generic scoring
+      const noIcpCamps = campaignIds.filter(cid => !campaignIcpCache.get(cid!));
+      if (noIcpCamps.length > 0) {
+        progress(`Warning: ${noIcpCamps.length} campaign(s) have no ICP defined. Using general scoring.`);
       }
 
-      const noIcp = campaignIds.filter(cid => !campaignIcpCache.get(cid!));
-      if (noIcp.length > 0) {
-        const campNames = [];
-        for (const cid of noIcp) {
-          const camp = await prisma.campaign.findFirst({ where: { id: cid!, userId } });
-          campNames.push(camp?.name || cid);
-        }
-        return { success: false, message: `Campaign(s) "${campNames.join('", "')}" have no ICP defined. Go to campaign settings (click the gear icon in sidebar) and define the ICP criteria first. I can also help — tell me "set ICP for [campaign name]" and describe your ideal customer.` };
-      }
+      const GENERIC_ICP = "Evaluate this professional as a potential B2B outreach contact. Score HIGH if they are a senior decision-maker (C-suite, VP, Director) at a relevant company. Score MEDIUM if they could be valuable but aren't a direct decision-maker. Score LOW if they are unlikely to be a relevant contact.";
 
       const results = [];
       const startTime = Date.now();
@@ -240,8 +250,7 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
         const text = [`Name: ${c.name}`, c.position && `Position: ${c.position}`, c.company && `Company: ${c.company}`].filter(Boolean).join("\n");
         try {
           progress(`Scoring ${c.name} (${results.length + 1}/${contacts.length})...`);
-          const campaignIcp = c.campaignId ? campaignIcpCache.get(c.campaignId) : null;
-          if (!campaignIcp) continue;
+          const campaignIcp = c.campaignId ? (campaignIcpCache.get(c.campaignId) || GENERIC_ICP) : GENERIC_ICP;
           const icpPrompt = getIcpScoringPrompt(campaignIcp);
           const resp = await callLLM(icpPrompt, text, settings.openrouterApiKey, settings.preferredModel);
           const parsed = JSON.parse(resp.trim());
@@ -251,8 +260,9 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
       }
 
       const remaining = totalUnscored - results.length;
+      const skippedMsg = skippedNoCampaign.length > 0 ? ` (${skippedNoCampaign.length} skipped — no campaign assigned; call assign_contacts_to_campaign to fix)` : "";
       await logActivity(userId, "score_contact", { level: "success", message: `Scored ${results.length} contacts (${remaining} remaining)` });
-      return { success: true, data: results, message: `Scored ${results.length} contacts:\n${results.join("\n")}${remaining > 0 ? `\n\n${remaining} contacts still unscored. Call score_contacts again to continue.` : ""}` };
+      return { success: true, data: results, message: `Scored ${results.length} contacts${skippedMsg}:\n${results.join("\n")}${remaining > 0 ? `\n\n${remaining} contacts still unscored. Call score_contacts again to continue.` : ""}` };
     }
 
     case "prepare_invites": {
@@ -631,7 +641,82 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
       return { success: true, message: `Campaign "${camp.name}" deleted. Contacts preserved.` };
     }
 
+    case "merge_campaigns": {
+      const sourceId = args.source_campaign_id as string;
+      const targetId = args.target_campaign_id as string;
+      const deleteSource = args.delete_source !== false; // default true
+
+      const allCamps = await prisma.campaign.findMany({ where: { userId }, select: { id: true, name: true } });
+      const campMap = new Map(allCamps.map(c => [c.id, c.name]));
+
+      // Resolve by name if needed
+      const resolveId = async (raw: string) => {
+        if (campMap.has(raw)) return raw;
+        const byName = await prisma.campaign.findFirst({ where: { userId, name: { contains: raw } } });
+        return byName?.id || null;
+      };
+
+      const resolvedSourceId = await resolveId(sourceId);
+      const resolvedTargetId = await resolveId(targetId);
+
+      if (!resolvedSourceId) {
+        const list = allCamps.map(c => `"${c.name}" → ${c.id}`).join(" | ");
+        return { success: false, message: `Source campaign "${sourceId}" not found. Available: [${list}]` };
+      }
+      if (!resolvedTargetId) {
+        const list = allCamps.map(c => `"${c.name}" → ${c.id}`).join(" | ");
+        return { success: false, message: `Target campaign "${targetId}" not found. Available: [${list}]` };
+      }
+      if (resolvedSourceId === resolvedTargetId) {
+        return { success: false, message: "Source and target campaigns are the same." };
+      }
+
+      const sourceName = campMap.get(resolvedSourceId) || resolvedSourceId;
+      const targetName = campMap.get(resolvedTargetId) || resolvedTargetId;
+
+      const movedCount = await prisma.contact.count({ where: { userId, campaignId: resolvedSourceId } });
+      await prisma.contact.updateMany({ where: { userId, campaignId: resolvedSourceId }, data: { campaignId: resolvedTargetId } });
+
+      if (deleteSource) {
+        await prisma.campaign.deleteMany({ where: { id: resolvedSourceId, userId } });
+      }
+
+      await logActivity(userId, "merge_campaigns", { level: "success", message: `Merged ${movedCount} contacts from "${sourceName}" into "${targetName}"${deleteSource ? " — source deleted" : ""}` });
+      return { success: true, message: `Merged ${movedCount} contacts from "${sourceName}" into "${targetName}".${deleteSource ? ` Source campaign deleted.` : ""}` };
+    }
+
     // ===== CONTACT MANAGEMENT =====
+    case "assign_contacts_to_campaign": {
+      const targetCampaignId = args.campaign_id as string;
+      const onlyUnassigned = args.only_unassigned !== false; // default true
+
+      // Resolve by name if ID not found
+      let resolvedId = targetCampaignId;
+      const campExists = await prisma.campaign.findFirst({ where: { id: targetCampaignId, userId } });
+      if (!campExists) {
+        const byName = await prisma.campaign.findFirst({ where: { userId, name: { contains: targetCampaignId } } });
+        if (byName) {
+          resolvedId = byName.id;
+        } else {
+          const allCamps = await prisma.campaign.findMany({ where: { userId }, select: { id: true, name: true }, orderBy: { createdAt: "desc" } });
+          const list = allCamps.map(c => `"${c.name}" → ${c.id}`).join(" | ");
+          return { success: false, message: `Campaign "${targetCampaignId}" not found. Available campaigns: [${list}]` };
+        }
+      }
+
+      const camp = await prisma.campaign.findFirst({ where: { id: resolvedId, userId } });
+      const where = onlyUnassigned ? { userId, campaignId: null as unknown as string } : { userId };
+      const count = await prisma.contact.count({ where });
+
+      if (count === 0) {
+        return { success: true, message: `No ${onlyUnassigned ? "unassigned " : ""}contacts to assign.` };
+      }
+
+      await prisma.contact.updateMany({ where, data: { campaignId: resolvedId } });
+      await logActivity(userId, "assign_contacts", { level: "success", message: `Assigned ${count} contacts to campaign "${camp?.name}"` });
+      return { success: true, message: `Assigned ${count} ${onlyUnassigned ? "previously unassigned " : ""}contacts to campaign "${camp?.name}". Now you can call score_contacts.` };
+    }
+
     case "delete_contacts": {
       const contactIds = args.contact_ids as string[] | undefined;
       const statusFilter = args.status as string | undefined;
