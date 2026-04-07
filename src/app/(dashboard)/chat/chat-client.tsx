@@ -1,9 +1,14 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Send, Loader2, Users, UserCheck, Inbox, Calendar, Copy, Check, ChevronRight, ChevronDown, ThumbsUp, ThumbsDown } from "lucide-react";
+import {
+  Send, Loader2, Users, UserCheck, Inbox, Calendar, Copy, Check,
+  ChevronRight, ChevronDown, ThumbsUp, ThumbsDown, MessageSquare, Zap,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface Segment {
@@ -178,6 +183,9 @@ export default function ChatPage({ campaignId }: { campaignId?: string }) {
   const [feedbackOpen, setFeedbackOpen] = useState<number | null>(null);
   const [feedbackWrong, setFeedbackWrong] = useState("");
   const [feedbackExpected, setFeedbackExpected] = useState("");
+  const [panelOpen, setPanelOpen] = useState(true);
+  const [widgetContext, setWidgetContext] = useState<{ label: string } | null>(null);
+  const [campaigns, setCampaigns] = useState<Array<{ id: string; name: string; isActive: boolean }>>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const initializedRef = useRef(false);
@@ -214,6 +222,7 @@ export default function ChatPage({ campaignId }: { campaignId?: string }) {
     const timeout = setTimeout(() => {
       void fetchStats();
       void fetchPriorities();
+      fetch("/api/campaigns").then(r => r.json()).then(d => setCampaigns(d.campaigns || [])).catch(() => {});
       fetch(`/api/chat${campaignId ? `?campaignId=${campaignId}` : ""}`).then(r => r.json()).then(data => {
         if (data.history?.length > 0) {
           setMessages(data.history.map((m: { role: string; content: string }) => ({ role: m.role as "user" | "assistant", content: m.content })));
@@ -225,11 +234,19 @@ export default function ChatPage({ campaignId }: { campaignId?: string }) {
     return () => clearTimeout(timeout);
   }, [campaignId, fetchPriorities, fetchStats]);
 
+  const openAI = useCallback((label: string) => {
+    setWidgetContext({ label });
+    setPanelOpen(true);
+    setTimeout(() => inputRef.current?.focus(), 50);
+  }, []);
+
   const sendMessage = async (text?: string) => {
-    const msg = text || input.trim();
-    if (!msg || loading) return;
+    const rawMsg = text || input.trim();
+    if (!rawMsg || loading) return;
+    const contextMsg = widgetContext ? `[Context: ${widgetContext.label}]\n\n${rawMsg}` : rawMsg;
+    setWidgetContext(null);
     setInput("");
-    setMessages(prev => [...prev, { role: "user", content: msg }]);
+    setMessages(prev => [...prev, { role: "user", content: rawMsg }]);
     setLoading(true);
     setLiveSegments([]);
 
@@ -237,7 +254,7 @@ export default function ChatPage({ campaignId }: { campaignId?: string }) {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: msg, history, campaignId }),
+        body: JSON.stringify({ message: contextMsg, history, campaignId }),
       });
 
       if (!res.ok) {
@@ -330,7 +347,7 @@ export default function ChatPage({ campaignId }: { campaignId?: string }) {
       // setMessages + setLoading + setLiveSegments all fire together → no blank-screen flash.
       if (fullContent) {
         setMessages(prev => [...prev, { role: "assistant", content: fullContent, segments: finalSegments }]);
-        setHistory(prev => [...prev, { role: "user", content: msg }, { role: "assistant", content: fullContent }].slice(-30));
+        setHistory(prev => [...prev, { role: "user", content: rawMsg }, { role: "assistant", content: fullContent }].slice(-30));
       }
       setLoading(false);
       setLiveSegments([]);
@@ -377,73 +394,166 @@ export default function ChatPage({ campaignId }: { campaignId?: string }) {
     toast.success("Feedback saved — the agent will learn from this");
   };
 
-  const statItems = [
-    { label: "Contacts", value: stats.total, icon: Users },
-    { label: "Invited", value: stats.invited, icon: Send },
-    { label: "Connected", value: stats.connected, icon: UserCheck },
-    { label: "Replied", value: stats.replied, icon: Inbox },
-    { label: "Meetings", value: stats.meetings, icon: Calendar },
-  ];
+  const suggestions = getSuggestions(stats);
 
   return (
-    <div className="flex flex-col h-[calc(100vh-48px)] -mx-6 -mt-6 -mb-6">
-      {/* Stats bar */}
-      <div className="flex items-center h-9 px-6 border-b border-border bg-card/30 gap-5 shrink-0">
-        {statItems.map(s => (
-          <div key={s.label} className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <s.icon className="h-3 w-3" />
-            <span className="font-mono font-semibold text-foreground">{s.value}</span>
-            <span>{s.label}</span>
+    <div className="flex flex-row h-[calc(100vh-48px)] -mx-6 -mt-6 -mb-6 overflow-hidden">
+
+      {/* ───────── LEFT: Dashboard ───────── */}
+      <div className="flex-1 min-w-0 overflow-y-auto p-6 space-y-5">
+
+        {/* Row 1 — KPI MetricCards */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <MetricCard label="Total Contacts" value={stats.total} icon={Users}
+            onAskAI={() => openAI("Pipeline Stats")} />
+          <MetricCard label="Invited" value={stats.invited} icon={Send}
+            onAskAI={() => openAI("Invited Contacts")} />
+          <MetricCard label="Connected" value={stats.connected} icon={UserCheck}
+            onAskAI={() => openAI("Connected Contacts")} />
+          <MetricCard label="Meetings" value={stats.meetings} icon={Calendar}
+            onAskAI={() => openAI("Meetings Booked")} />
+        </div>
+
+        {/* Row 2 — Campaigns + Priority Contacts */}
+        <div className="grid grid-cols-2 gap-3">
+
+          {/* Campaign list */}
+          <Card size="sm" className="group/card-widget">
+            <CardHeader className="border-b border-border/50 pb-2">
+              <div className="flex items-center justify-between gap-2">
+                <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Campaigns</CardTitle>
+                <button
+                  onClick={() => openAI("Campaigns")}
+                  className="opacity-0 group-hover/card-widget:opacity-100 transition-opacity text-[10px] font-medium text-primary bg-primary/10 hover:bg-primary/20 px-2 py-0.5 rounded-full flex items-center gap-1"
+                >
+                  <Zap className="h-2.5 w-2.5" />Ask AI
+                </button>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-2 pb-1 space-y-1">
+              {campaigns.length === 0 ? (
+                <p className="text-xs text-muted-foreground py-2">No campaigns yet</p>
+              ) : (
+                campaigns.slice(0, 5).map(c => (
+                  <div key={c.id} className="flex items-center justify-between gap-2 py-1.5 group/row">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className={`shrink-0 h-1.5 w-1.5 rounded-full ${c.isActive ? "bg-green-500" : "bg-muted-foreground/30"}`} />
+                      <span className="text-xs text-foreground truncate">{c.name}</span>
+                    </div>
+                    <Link
+                      href={`/chat/${c.id}`}
+                      className="shrink-0 text-[10px] text-muted-foreground hover:text-primary opacity-0 group-hover/row:opacity-100 transition-opacity"
+                    >
+                      Open →
+                    </Link>
+                  </div>
+                ))
+              )}
+              {campaigns.length > 5 && (
+                <p className="text-[10px] text-muted-foreground pt-1">+{campaigns.length - 5} more</p>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Priority contacts */}
+          <Card size="sm" className="group/card-widget">
+            <CardHeader className="border-b border-border/50 pb-2">
+              <div className="flex items-center justify-between gap-2">
+                <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Top Priorities</CardTitle>
+                <button
+                  onClick={() => openAI("Priority Contacts")}
+                  className="opacity-0 group-hover/card-widget:opacity-100 transition-opacity text-[10px] font-medium text-primary bg-primary/10 hover:bg-primary/20 px-2 py-0.5 rounded-full flex items-center gap-1"
+                >
+                  <Zap className="h-2.5 w-2.5" />Ask AI
+                </button>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-2 pb-1 space-y-1">
+              {priorities.length === 0 ? (
+                <p className="text-xs text-muted-foreground py-2">Run pipeline prioritization to see top contacts</p>
+              ) : (
+                priorities.map(item => (
+                  <button
+                    key={item.contactId}
+                    onClick={() => { setPanelOpen(true); sendMessage(`Why is ${item.contactName} a priority and what should we do next?`); }}
+                    className="w-full text-left rounded-lg px-2 py-1.5 hover:bg-accent/40 transition-colors group/pitem"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium text-foreground truncate">{item.contactName}{item.company ? ` · ${item.company}` : ""}</p>
+                        <p className="text-[10px] text-muted-foreground truncate">{item.whyNow}</p>
+                      </div>
+                      <span className="shrink-0 font-mono text-xs font-semibold text-foreground">{item.priorityScore}</span>
+                    </div>
+                  </button>
+                ))
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Row 3 — Suggested Actions */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Suggested Actions</p>
+            {messages.length > 0 && !panelOpen && (
+              <button
+                onClick={() => setPanelOpen(true)}
+                className="text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-1"
+              >
+                <MessageSquare className="h-3 w-3" />
+                {messages.length} messages in AI chat →
+              </button>
+            )}
           </div>
-        ))}
+          <div className="grid grid-cols-2 gap-2">
+            {suggestions.map((s, i) => (
+              <button
+                key={i}
+                onClick={() => { setPanelOpen(true); sendMessage(s.message); }}
+                className="text-left text-xs px-3 py-2.5 rounded-lg border border-border hover:bg-accent/50 transition-colors text-muted-foreground hover:text-foreground flex flex-col gap-1"
+              >
+                <span>{s.text}</span>
+                {s.tag && (
+                  <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full self-start ${s.tagColor}`}>{s.tag}</span>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="max-w-3xl mx-auto px-6 py-6 space-y-5">
-          {messages.length === 0 && !loading && (
-            <div className="flex flex-col items-center justify-center py-20 text-center">
-              <h2 className="text-base font-semibold text-foreground mb-1">Outreach Agent</h2>
-              <p className="text-sm text-muted-foreground mb-8">Tell me what to do. I execute in real-time.</p>
-              {priorities.length > 0 && (
-                <div className="w-full max-w-lg mb-6 rounded-xl border border-border bg-card/60 p-4 text-left">
-                  <div className="flex items-center justify-between gap-2 mb-3">
-                    <div>
-                      <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">What should we do today?</p>
-                      <p className="text-sm text-foreground font-medium">Highest expected-value moves right now</p>
-                    </div>
-                    <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => sendMessage("Prioritize the pipeline by expected value and tell me the top actions")}>
-                      Refresh
-                    </Button>
-                  </div>
-                  <div className="space-y-2">
-                    {priorities.map((item) => (
-                      <button
-                        key={item.contactId}
-                        onClick={() => sendMessage(`Why is ${item.contactName} a priority and what should we do next?`)}
-                        className="w-full text-left rounded-lg border border-border px-3 py-2 hover:bg-accent/40 transition-colors"
-                      >
-                        <div className="flex items-center justify-between gap-3">
-                          <div>
-                            <p className="text-sm font-medium text-foreground">{item.contactName}{item.company ? ` · ${item.company}` : ""}</p>
-                            <p className="text-xs text-muted-foreground">{item.whyNow}</p>
-                          </div>
-                          <div className="shrink-0 text-right">
-                            <p className="font-mono text-sm font-semibold text-foreground">{item.priorityScore}</p>
-                            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{item.nextBestAction.replaceAll("_", " ")}</p>
-                          </div>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
+      {/* ───────── RIGHT: AI Panel ───────── */}
+      {panelOpen ? (
+        <div className="w-[360px] shrink-0 flex flex-col border-l border-border bg-card/20">
+
+          {/* Panel header */}
+          <div className="flex items-center justify-between px-4 h-10 border-b border-border shrink-0">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-foreground">AI Assistant</span>
+              {(loading || liveSegments.length > 0) && (
+                <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
               )}
-              <div className="grid grid-cols-2 gap-2 w-full max-w-lg">
-                {getSuggestions(stats).map((s, i) => (
+            </div>
+            <button
+              onClick={() => setPanelOpen(false)}
+              className="h-6 w-6 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              title="Collapse panel"
+            >
+              <ChevronRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
+
+          {/* Messages area */}
+          <div className="flex-1 overflow-y-auto px-3 py-3 space-y-4">
+            {messages.length === 0 && !loading && (
+              <div className="space-y-1.5 pt-2">
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Quick actions</p>
+                {suggestions.slice(0, 4).map((s, i) => (
                   <button
                     key={i}
                     onClick={() => sendMessage(s.message)}
-                    className="text-left text-sm px-3 py-2.5 rounded-lg border border-border hover:bg-accent/50 transition-colors text-muted-foreground hover:text-foreground flex flex-col gap-1"
+                    className="w-full text-left text-xs px-3 py-2 rounded-lg border border-border hover:bg-accent/50 transition-colors text-muted-foreground hover:text-foreground flex flex-col gap-0.5"
                   >
                     <span>{s.text}</span>
                     {s.tag && (
@@ -452,146 +562,194 @@ export default function ChatPage({ campaignId }: { campaignId?: string }) {
                   </button>
                 ))}
               </div>
-            </div>
-          )}
+            )}
 
-          {messages.map((msg, i) => (
-            <div key={i} className={cn("group", msg.role === "user" ? "flex justify-end" : "")}>
-              {msg.role === "user" ? (
-                <div className="flex items-start gap-2 max-w-[80%]">
-                  <div className="bg-primary text-primary-foreground rounded-2xl rounded-tr-sm px-4 py-2.5 text-sm">
-                    {msg.content}
-                  </div>
-                  <CopyButton text={msg.content} />
-                </div>
-              ) : (
-                <div className="space-y-1">
-                  {/* Interleaved segments — thinking groups + text blocks in order */}
-                  {msg.segments && msg.segments.length > 0 ? (
-                    msg.segments.map((seg, si) =>
-                      seg.type === "thinking" ? (
-                        <TaskGroup key={si} steps={seg.steps || []} />
-                      ) : (
-                        <div key={si} className="text-sm text-foreground leading-relaxed max-w-none prose-agent" dangerouslySetInnerHTML={{ __html: fmtMd(seg.content || "") }} />
-                      )
-                    )
-                  ) : (
-                    <div className="text-sm text-foreground leading-relaxed max-w-none prose-agent" dangerouslySetInnerHTML={{ __html: fmtMd(msg.content) }} />
-                  )}
-                  {/* Copy button aligned to last text segment */}
-                  <div className="flex items-start gap-2">
+            {messages.map((msg, i) => (
+              <div key={i} className={cn("group", msg.role === "user" ? "flex justify-end" : "")}>
+                {msg.role === "user" ? (
+                  <div className="flex items-start gap-1.5 max-w-[85%]">
+                    <div className="bg-primary text-primary-foreground rounded-2xl rounded-tr-sm px-3 py-2 text-xs">
+                      {msg.content}
+                    </div>
                     <CopyButton text={msg.content} />
                   </div>
-                  {/* Rating buttons */}
-                  <div className="flex items-center gap-1 pt-0.5 pl-0.5">
-                    {ratings.get(i) === undefined ? (
-                      <>
-                        <button
-                          onClick={() => handleRate(i, msg.content, "up")}
-                          className="opacity-0 group-hover:opacity-100 transition-opacity h-6 w-6 rounded flex items-center justify-center text-muted-foreground/50 hover:text-green-500 hover:bg-green-500/10"
-                          title="Good response"
-                        >
-                          <ThumbsUp className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          onClick={() => handleRate(i, msg.content, "down")}
-                          className="opacity-0 group-hover:opacity-100 transition-opacity h-6 w-6 rounded flex items-center justify-center text-muted-foreground/50 hover:text-red-500 hover:bg-red-500/10"
-                          title="Bad response"
-                        >
-                          <ThumbsDown className="h-3.5 w-3.5" />
-                        </button>
-                      </>
-                    ) : ratings.get(i) === "up" ? (
-                      <span className="flex items-center gap-1 text-[10px] text-green-500"><ThumbsUp className="h-3 w-3" /></span>
+                ) : (
+                  <div className="space-y-1">
+                    {msg.segments && msg.segments.length > 0 ? (
+                      msg.segments.map((seg, si) =>
+                        seg.type === "thinking" ? (
+                          <TaskGroup key={si} steps={seg.steps || []} />
+                        ) : (
+                          <div key={si} className="text-xs text-foreground leading-relaxed max-w-none prose-agent" dangerouslySetInnerHTML={{ __html: fmtMd(seg.content || "") }} />
+                        )
+                      )
                     ) : (
-                      <span className="flex items-center gap-1 text-[10px] text-red-500"><ThumbsDown className="h-3 w-3" /></span>
+                      <div className="text-xs text-foreground leading-relaxed max-w-none prose-agent" dangerouslySetInnerHTML={{ __html: fmtMd(msg.content) }} />
                     )}
-                  </div>
-                  {/* Inline feedback form for thumbs down */}
-                  {feedbackOpen === i && (
-                    <div className="mt-2 p-3 rounded-xl border border-border bg-card space-y-2 max-w-xl">
-                      <p className="text-xs font-medium text-foreground">What was wrong with this response?</p>
-                      <textarea
-                        value={feedbackWrong}
-                        onChange={e => setFeedbackWrong(e.target.value)}
-                        placeholder="Describe what was incorrect or unhelpful..."
-                        className="w-full resize-none bg-transparent border border-border rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50 min-h-[56px]"
-                        rows={2}
-                      />
-                      <p className="text-xs font-medium text-foreground">What did you expect instead?</p>
-                      <textarea
-                        value={feedbackExpected}
-                        onChange={e => setFeedbackExpected(e.target.value)}
-                        placeholder="Describe the ideal response or action..."
-                        className="w-full resize-none bg-transparent border border-border rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50 min-h-[56px]"
-                        rows={2}
-                      />
-                      <div className="flex gap-2">
-                        <Button size="sm" className="h-7 text-xs" onClick={() => submitFeedback(i, msg.content)} disabled={!feedbackWrong.trim() && !feedbackExpected.trim()}>
-                          Submit feedback
-                        </Button>
-                        <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => { setFeedbackOpen(null); setRatings(prev => { const n = new Map(prev); n.delete(i); return n; }); }}>
-                          Cancel
-                        </Button>
-                      </div>
+                    <div className="flex items-start gap-1.5">
+                      <CopyButton text={msg.content} />
                     </div>
-                  )}
-                </div>
-              )}
-            </div>
-          ))}
-
-          {/* Live streaming — interleaved segments in order of occurrence */}
-          {loading && (
-            <div className="space-y-1">
-              {liveSegments.length === 0 && (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  <span>Thinking...</span>
-                </div>
-              )}
-              {liveSegments.map((seg, i) => {
-                const isLastSeg = i === liveSegments.length - 1;
-                if (seg.type === "thinking") {
-                  return seg.done
-                    ? <TaskGroup key={i} steps={seg.steps || []} />
-                    : <LiveTaskGroup key={i} steps={seg.steps || []} />;
-                }
-                return (
-                  <div key={i} className="text-sm text-foreground leading-relaxed prose-agent">
-                    <span dangerouslySetInnerHTML={{ __html: fmtMd(seg.content || "") }} />
-                    {isLastSeg && (
-                      <span className="inline-block w-[2px] h-[14px] bg-foreground/70 animate-pulse ml-0.5 align-middle" />
+                    {/* Rating buttons */}
+                    <div className="flex items-center gap-1 pt-0.5 pl-0.5">
+                      {ratings.get(i) === undefined ? (
+                        <>
+                          <button
+                            onClick={() => handleRate(i, msg.content, "up")}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity h-5 w-5 rounded flex items-center justify-center text-muted-foreground/50 hover:text-green-500 hover:bg-green-500/10"
+                          >
+                            <ThumbsUp className="h-3 w-3" />
+                          </button>
+                          <button
+                            onClick={() => handleRate(i, msg.content, "down")}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity h-5 w-5 rounded flex items-center justify-center text-muted-foreground/50 hover:text-red-500 hover:bg-red-500/10"
+                          >
+                            <ThumbsDown className="h-3 w-3" />
+                          </button>
+                        </>
+                      ) : ratings.get(i) === "up" ? (
+                        <span className="flex items-center gap-1 text-[10px] text-green-500"><ThumbsUp className="h-3 w-3" /></span>
+                      ) : (
+                        <span className="flex items-center gap-1 text-[10px] text-red-500"><ThumbsDown className="h-3 w-3" /></span>
+                      )}
+                    </div>
+                    {feedbackOpen === i && (
+                      <div className="mt-2 p-2.5 rounded-xl border border-border bg-card space-y-2">
+                        <p className="text-xs font-medium text-foreground">What was wrong?</p>
+                        <textarea
+                          value={feedbackWrong}
+                          onChange={e => setFeedbackWrong(e.target.value)}
+                          placeholder="Describe what was incorrect..."
+                          className="w-full resize-none bg-transparent border border-border rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50 min-h-[48px]"
+                          rows={2}
+                        />
+                        <p className="text-xs font-medium text-foreground">What did you expect?</p>
+                        <textarea
+                          value={feedbackExpected}
+                          onChange={e => setFeedbackExpected(e.target.value)}
+                          placeholder="Describe the ideal response..."
+                          className="w-full resize-none bg-transparent border border-border rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50 min-h-[48px]"
+                          rows={2}
+                        />
+                        <div className="flex gap-1.5">
+                          <Button size="sm" className="h-6 text-xs px-2" onClick={() => submitFeedback(i, msg.content)} disabled={!feedbackWrong.trim() && !feedbackExpected.trim()}>
+                            Submit
+                          </Button>
+                          <Button size="sm" variant="ghost" className="h-6 text-xs px-2" onClick={() => { setFeedbackOpen(null); setRatings(prev => { const n = new Map(prev); n.delete(i); return n; }); }}>
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
                     )}
                   </div>
-                );
-              })}
+                )}
+              </div>
+            ))}
+
+            {/* Live streaming */}
+            {loading && (
+              <div className="space-y-1">
+                {liveSegments.length === 0 && (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    <span>Thinking...</span>
+                  </div>
+                )}
+                {liveSegments.map((seg, i) => {
+                  const isLastSeg = i === liveSegments.length - 1;
+                  if (seg.type === "thinking") {
+                    return seg.done
+                      ? <TaskGroup key={i} steps={seg.steps || []} />
+                      : <LiveTaskGroup key={i} steps={seg.steps || []} />;
+                  }
+                  return (
+                    <div key={i} className="text-xs text-foreground leading-relaxed prose-agent">
+                      <span dangerouslySetInnerHTML={{ __html: fmtMd(seg.content || "") }} />
+                      {isLastSeg && (
+                        <span className="inline-block w-[2px] h-[12px] bg-foreground/70 animate-pulse ml-0.5 align-middle" />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <div ref={bottomRef} />
+          </div>
+
+          {/* Input area */}
+          <div className="border-t border-border px-3 py-2.5 shrink-0">
+            {widgetContext && (
+              <div className="flex items-center gap-1 mb-2">
+                <span className="text-[10px] font-medium bg-primary/10 text-primary px-2 py-0.5 rounded-full flex items-center gap-1.5">
+                  ✦ {widgetContext.label}
+                  <button
+                    onClick={() => setWidgetContext(null)}
+                    className="text-primary/70 hover:text-primary leading-none"
+                  >
+                    ×
+                  </button>
+                </span>
+              </div>
+            )}
+            <div className="flex gap-1.5 items-end">
+              <textarea
+                ref={inputRef}
+                value={input}
+                onChange={e => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={widgetContext ? `Ask about ${widgetContext.label}...` : "Message the agent..."}
+                disabled={loading}
+                className="flex-1 resize-none bg-transparent border border-border rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50 min-h-[36px] max-h-[100px]"
+                rows={1}
+              />
+              <Button onClick={() => sendMessage()} disabled={loading || !input.trim()} size="icon" className="h-8 w-8 rounded-xl shrink-0">
+                {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+              </Button>
             </div>
-          )}
-
-          <div ref={bottomRef} />
+          </div>
         </div>
-      </div>
-
-      {/* Input */}
-      <div className="border-t border-border bg-background px-6 py-3 shrink-0">
-        <div className="max-w-3xl mx-auto flex gap-2 items-end">
-          <textarea
-            ref={inputRef}
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Message the agent..."
-            disabled={loading}
-            className="flex-1 resize-none bg-transparent border border-border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50 min-h-[40px] max-h-[120px]"
-            rows={1}
-          />
-          <Button onClick={() => sendMessage()} disabled={loading || !input.trim()} size="icon" className="h-10 w-10 rounded-xl shrink-0">
-            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-          </Button>
+      ) : (
+        /* Collapsed strip */
+        <div className="w-10 shrink-0 flex flex-col items-center border-l border-border bg-card/20 py-3 gap-2">
+          <button
+            onClick={() => setPanelOpen(true)}
+            className="relative p-1.5 hover:bg-muted rounded-lg transition-colors"
+            title="Open AI Assistant"
+          >
+            <MessageSquare className="h-4 w-4 text-muted-foreground" />
+            {(messages.length > 0 || loading) && (
+              <span className="absolute top-0.5 right-0.5 h-1.5 w-1.5 rounded-full bg-blue-500" />
+            )}
+          </button>
         </div>
-      </div>
+      )}
     </div>
+  );
+}
+
+/* ===== MetricCard ===== */
+function MetricCard({ label, value, icon: Icon, onAskAI }: {
+  label: string;
+  value: number;
+  icon: React.ComponentType<{ className?: string }>;
+  onAskAI: () => void;
+}) {
+  return (
+    <Card size="sm" className="relative group/metric">
+      <CardContent className="pt-3 pb-3">
+        <div className="flex items-center justify-between mb-2">
+          <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+          <button
+            onClick={onAskAI}
+            className="opacity-0 group-hover/metric:opacity-100 transition-opacity text-[10px] font-medium text-primary bg-primary/10 hover:bg-primary/20 px-2 py-0.5 rounded-full flex items-center gap-1"
+          >
+            <Zap className="h-2.5 w-2.5" />Ask AI
+          </button>
+        </div>
+        <p className="text-2xl font-mono font-bold text-foreground">{value}</p>
+        <p className="text-xs text-muted-foreground mt-0.5">{label}</p>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -723,10 +881,10 @@ function CopyButton({ text }: { text: string }) {
   return (
     <button
       onClick={handleCopy}
-      className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0 mt-1 w-7 h-7 rounded-md hover:bg-muted flex items-center justify-center text-muted-foreground/50 hover:text-foreground"
+      className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0 mt-1 w-6 h-6 rounded-md hover:bg-muted flex items-center justify-center text-muted-foreground/50 hover:text-foreground"
       title="Copy"
     >
-      {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+      {copied ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
     </button>
   );
 }
