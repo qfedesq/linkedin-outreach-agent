@@ -302,8 +302,9 @@ export default function ChatPage({ campaignId }: { campaignId?: string }) {
               }
               case "clear": {
                 fullContent = "";
-                // Mark all thinking as done; drop any partial text segments
-                segs = segs.map(s => ({ ...s, done: true }));
+                // Keep only thinking segments (marked done); drop text segments so the
+                // real final response starts fresh instead of appending to old content
+                segs = segs.filter(s => s.type === "thinking").map(s => ({ ...s, done: true }));
                 setLiveSegments([...segs]);
                 break;
               }
@@ -318,17 +319,28 @@ export default function ChatPage({ campaignId }: { campaignId?: string }) {
         }
       }
 
+      // Fallback: if fullContent is empty (stream cut), recover from text segments
+      if (!fullContent) {
+        fullContent = segs.filter(s => s.type === "text").map(s => s.content || "").join("");
+      }
+
+      const finalSegments = segs.map(s => ({ ...s, done: true }));
+
+      // Commit everything in ONE synchronous block so React 18 batches into a single render.
+      // setMessages + setLoading + setLiveSegments all fire together → no blank-screen flash.
       if (fullContent) {
-        const finalSegments = segs.map(s => ({ ...s, done: true }));
         setMessages(prev => [...prev, { role: "assistant", content: fullContent, segments: finalSegments }]);
         setHistory(prev => [...prev, { role: "user", content: msg }, { role: "assistant", content: fullContent }].slice(-30));
+      }
+      setLoading(false);
+      setLiveSegments([]);
+
+      if (fullContent) {
         fetchStats();
         fetchPriorities();
       }
-    } catch { toast.error("Connection failed"); }
+    } catch { toast.error("Connection failed"); setLoading(false); setLiveSegments([]); }
 
-    setLoading(false);
-    setLiveSegments([]);
     setTimeout(() => inputRef.current?.focus(), 100);
   };
 
