@@ -17,12 +17,24 @@ interface Campaign {
   followupDelayDays: number; isActive: boolean;
 }
 
+interface AccountMapItem {
+  accountKey: string;
+  company: string;
+  contactCount: number;
+  warmContacts: number;
+  repliedContacts: number;
+  missingPersonas: string[];
+  accountHealth: "cold" | "warming" | "engaged" | "meeting";
+  nextRecommendedMove: string;
+}
+
 export default function CampaignPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const [campaign, setCampaign] = useState<Campaign | null>(null);
   const [contactCount, setContactCount] = useState(0);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [accountMap, setAccountMap] = useState<AccountMapItem[]>([]);
 
   useEffect(() => {
     fetch(`/api/campaigns/${id}`)
@@ -30,6 +42,10 @@ export default function CampaignPage({ params }: { params: Promise<{ id: string 
       .then(d => { setCampaign(d.campaign); setContactCount(d.contactCount || 0); })
       .catch(() => toast.error("Campaign not found"))
       .finally(() => setLoading(false));
+    fetch(`/api/accounts/map?campaignId=${id}&limit=6`)
+      .then(r => r.json())
+      .then(d => setAccountMap(d.accounts || []))
+      .catch(() => {});
   }, [id]);
 
   const save = async () => {
@@ -115,6 +131,36 @@ export default function CampaignPage({ params }: { params: Promise<{ id: string 
             <div className="space-y-2"><Label>Daily Invite Limit</Label><Input type="number" value={campaign.dailyInviteLimit} onChange={e => u("dailyInviteLimit", parseInt(e.target.value) || 20)} /></div>
             <div className="space-y-2"><Label>Follow-up Delay (days)</Label><Input type="number" value={campaign.followupDelayDays} onChange={e => u("followupDelayDays", parseInt(e.target.value) || 3)} /></div>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Account Map</CardTitle>
+          <CardDescription>See where coverage is strongest and which buying-committee gaps to fill next.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {accountMap.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No account map yet. Add more contacts with company names to build account-level coverage.</p>
+          ) : (
+            <div className="space-y-3">
+              {accountMap.map((account) => (
+                <div key={account.accountKey} className="rounded-lg border border-border p-3">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-sm font-semibold">{account.company}</p>
+                      <p className="text-xs text-muted-foreground">{account.contactCount} contact(s) · {account.warmContacts} warm · {account.repliedContacts} replied</p>
+                    </div>
+                    <Badge variant="secondary">{account.accountHealth}</Badge>
+                  </div>
+                  <p className="mt-2 text-sm text-foreground">{account.nextRecommendedMove}</p>
+                  {account.missingPersonas.length > 0 && (
+                    <p className="mt-1 text-xs text-muted-foreground">Missing personas: {account.missingPersonas.join(", ")}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
 

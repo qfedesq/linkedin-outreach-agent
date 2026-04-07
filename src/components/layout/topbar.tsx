@@ -10,7 +10,7 @@ import {
 import { LogOut, Menu, Settings, Sun, Moon } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Sidebar } from "./sidebar";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 
 interface ServiceStatus { linkedin: boolean; openrouter: boolean }
@@ -18,10 +18,12 @@ interface ServiceStatus { linkedin: boolean; openrouter: boolean }
 export function TopBar() {
   const { data: session } = useSession();
   const { theme, setTheme } = useTheme();
-  const [mounted, setMounted] = useState(false);
+  const mounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  );
   const [services, setServices] = useState<ServiceStatus>({ linkedin: false, openrouter: false });
-
-  useEffect(() => { setMounted(true); }, []);
 
   useEffect(() => {
     fetch("/api/settings").then(r => r.json()).then(data => {
@@ -37,7 +39,9 @@ export function TopBar() {
     <header className="sticky top-0 z-40 flex h-12 items-center gap-4 border-b border-border bg-background px-4">
       <Sheet>
         <SheetTrigger>
-          <Button variant="ghost" size="icon" className="lg:hidden h-8 w-8"><Menu className="h-4 w-4" /></Button>
+          <span className="lg:hidden inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground">
+            <Menu className="h-4 w-4" />
+          </span>
         </SheetTrigger>
         <SheetContent side="left" className="p-0 w-[200px]"><Sidebar /></SheetContent>
       </Sheet>

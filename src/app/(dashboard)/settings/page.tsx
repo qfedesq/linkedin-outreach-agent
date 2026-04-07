@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Eye, EyeOff, CheckCircle, XCircle, Loader2 } from "lucide-react";
@@ -201,10 +200,9 @@ export default function SettingsPage() {
 
 function ModelSelector({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const [models, setModels] = useState<Array<{ id: string; name: string; costPer1k: string }>>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    setLoading(true);
     fetch("/api/models").then(r => r.json()).then(d => setModels(d.models || [])).catch(() => {}).finally(() => setLoading(false));
   }, []);
 

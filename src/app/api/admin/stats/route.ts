@@ -10,7 +10,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  await logActivity((session.user as any).id, "admin_access", { message: "Admin dashboard accessed" });
+  const adminUserId = (session.user as { id?: string }).id || session.user.email || "admin";
+  await logActivity(adminUserId, "admin_access", { message: "Admin dashboard accessed" });
 
   const { searchParams } = new URL(request.url);
   const period = searchParams.get("period") || "month";
@@ -127,10 +128,6 @@ export async function GET(request: NextRequest) {
       } catch {}
     }
     // Also check global llm_usage logs (older format uses userId="global")
-    const globalLlmLogs = await prisma.executionLog.findMany({
-      where: { userId: "global", action: "llm_usage", createdAt: { gte: since } },
-      select: { response: true },
-    });
     // Chat messages
     const chatMsgs = await prisma.chatMessage.count({ where: { userId: user.id } });
 

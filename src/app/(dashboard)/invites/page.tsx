@@ -190,9 +190,9 @@ export default function InvitesPage() {
       )}
 
       {items.length === 0 && !loading && (
-        <Card>
+          <Card>
           <CardContent className="py-12 text-center text-muted-foreground">
-            Click "Prepare New Batch" to generate personalized connection notes for your contacts.
+            Click &quot;Prepare New Batch&quot; to generate personalized connection notes for your contacts.
             Contacts must be enriched first (have profileId).
           </CardContent>
         </Card>

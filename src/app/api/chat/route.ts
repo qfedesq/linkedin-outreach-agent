@@ -392,6 +392,7 @@ CRITICAL RULES — NEVER VIOLATE:
 8. When user says "send" or "go ahead", ALWAYS call the appropriate send tool. Never just describe what you would do.
 
 TOOLS: Real execution tools. discover_prospects SEARCHES LinkedIn. send_invites SENDS via LinkedIn. prepare_invites with campaign_id to filter by campaign.
+REVENUE OPERATOR TOOLS: prioritize_pipeline_by_expected_value, build_account_map, draft_reply_strategy, run_message_experiment, reactivate_stale_pipeline, prepare_meeting_brief.
 
 CAMPAIGN ID RULES — CRITICAL:
 - NEVER use a campaign_id from conversation history without verifying it exists. Campaign IDs from past sessions may be stale/deleted.

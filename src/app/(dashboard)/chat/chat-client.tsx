@@ -8,14 +8,24 @@ import { cn } from "@/lib/utils";
 
 interface Message { role: "user" | "assistant"; content: string; thinking?: string[] }
 interface Stats { total: number; invited: number; connected: number; replied: number; meetings: number }
+interface PriorityItem {
+  contactId: string;
+  contactName: string;
+  company: string | null;
+  priorityScore: number;
+  whyNow: string;
+  nextBestAction: string;
+}
 
 const SUGGESTIONS = [
   "What should we do next?",
   "Show me the pipeline",
+  "Prioritize the pipeline by expected value",
+  "Build the account map for this campaign",
   "Discover 20 prospects",
-  "Score unscored contacts",
-  "Prepare invites for HIGH fit",
-  "Run the daily cycle",
+  "Design a messaging experiment",
+  "Reactivate stale contacts",
+  "Run the daily cycle"
 ];
 
 export default function ChatPage({ campaignId }: { campaignId?: string }) {
@@ -26,13 +36,14 @@ export default function ChatPage({ campaignId }: { campaignId?: string }) {
   const [thinkingSteps, setThinkingSteps] = useState<string[]>([]);
   const [history, setHistory] = useState<Array<{ role: string; content: string }>>([]);
   const [stats, setStats] = useState<Stats>({ total: 0, invited: 0, connected: 0, replied: 0, meetings: 0 });
-  const [initialized, setInitialized] = useState(false);
+  const [priorities, setPriorities] = useState<PriorityItem[]>([]);
   const [ratings, setRatings] = useState<Map<number, "up" | "down">>(new Map());
   const [feedbackOpen, setFeedbackOpen] = useState<number | null>(null);
   const [feedbackWrong, setFeedbackWrong] = useState("");
   const [feedbackExpected, setFeedbackExpected] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const initializedRef = useRef(false);
 
   const scrollToBottom = useCallback(() => {
     setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
@@ -51,18 +62,31 @@ export default function ChatPage({ campaignId }: { campaignId?: string }) {
     } catch {}
   }, []);
 
+  const fetchPriorities = useCallback(async () => {
+    try {
+      const params = campaignId ? `?campaignId=${campaignId}&limit=4` : "?limit=4";
+      const res = await fetch(`/api/pipeline/priorities${params}`);
+      const data = await res.json();
+      setPriorities(data.priorities || []);
+    } catch {}
+  }, [campaignId]);
+
   useEffect(() => {
-    if (initialized) return;
-    setInitialized(true);
-    fetchStats();
-    fetch(`/api/chat${campaignId ? `?campaignId=${campaignId}` : ""}`).then(r => r.json()).then(data => {
-      if (data.history?.length > 0) {
-        setMessages(data.history.map((m: { role: string; content: string }) => ({ role: m.role as "user" | "assistant", content: m.content })));
-        setHistory(data.history);
-      }
-      if (data.greeting) setMessages(prev => [...prev, { role: "assistant", content: data.greeting }]);
-    }).catch(() => {});
-  }, [initialized, fetchStats]);
+    if (initializedRef.current) return;
+    initializedRef.current = true;
+    const timeout = setTimeout(() => {
+      void fetchStats();
+      void fetchPriorities();
+      fetch(`/api/chat${campaignId ? `?campaignId=${campaignId}` : ""}`).then(r => r.json()).then(data => {
+        if (data.history?.length > 0) {
+          setMessages(data.history.map((m: { role: string; content: string }) => ({ role: m.role as "user" | "assistant", content: m.content })));
+          setHistory(data.history);
+        }
+        if (data.greeting) setMessages(prev => [...prev, { role: "assistant", content: data.greeting }]);
+      }).catch(() => {});
+    }, 0);
+    return () => clearTimeout(timeout);
+  }, [campaignId, fetchPriorities, fetchStats]);
 
   const sendMessage = async (text?: string) => {
     const msg = text || input.trim();
@@ -136,6 +160,7 @@ export default function ChatPage({ campaignId }: { campaignId?: string }) {
         setMessages(prev => [...prev, { role: "assistant", content: fullContent, thinking: steps.length > 0 ? steps : undefined }]);
         setHistory(prev => [...prev, { role: "user", content: msg }, { role: "assistant", content: fullContent }].slice(-30));
         fetchStats();
+        fetchPriorities();
       }
     } catch { toast.error("Connection failed"); }
 
@@ -206,6 +231,39 @@ export default function ChatPage({ campaignId }: { campaignId?: string }) {
             <div className="flex flex-col items-center justify-center py-20 text-center">
               <h2 className="text-base font-semibold text-foreground mb-1">Outreach Agent</h2>
               <p className="text-sm text-muted-foreground mb-8">Tell me what to do. I execute in real-time.</p>
+              {priorities.length > 0 && (
+                <div className="w-full max-w-lg mb-6 rounded-xl border border-border bg-card/60 p-4 text-left">
+                  <div className="flex items-center justify-between gap-2 mb-3">
+                    <div>
+                      <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">What should we do today?</p>
+                      <p className="text-sm text-foreground font-medium">Highest expected-value moves right now</p>
+                    </div>
+                    <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => sendMessage("Prioritize the pipeline by expected value and tell me the top actions")}>
+                      Refresh
+                    </Button>
+                  </div>
+                  <div className="space-y-2">
+                    {priorities.map((item) => (
+                      <button
+                        key={item.contactId}
+                        onClick={() => sendMessage(`Why is ${item.contactName} a priority and what should we do next?`)}
+                        className="w-full text-left rounded-lg border border-border px-3 py-2 hover:bg-accent/40 transition-colors"
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-medium text-foreground">{item.contactName}{item.company ? ` · ${item.company}` : ""}</p>
+                            <p className="text-xs text-muted-foreground">{item.whyNow}</p>
+                          </div>
+                          <div className="shrink-0 text-right">
+                            <p className="font-mono text-sm font-semibold text-foreground">{item.priorityScore}</p>
+                            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{item.nextBestAction.replaceAll("_", " ")}</p>
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-2 w-full max-w-lg">
                 {SUGGESTIONS.map(s => (
                   <button key={s} onClick={() => sendMessage(s)} className="text-left text-sm px-3 py-2 rounded-lg border border-border hover:bg-accent/50 transition-colors text-muted-foreground hover:text-foreground">{s}</button>

@@ -14,9 +14,6 @@ import {
   AlertTriangle,
   Info,
   Bug,
-  Pause,
-  Play,
-  Trash2,
   RefreshCw,
 } from "lucide-react";
 
@@ -119,7 +116,10 @@ export default function LiveWatchPage() {
   }, []);
 
   useEffect(() => {
-    fetchLogs();
+    const timeout = setTimeout(() => {
+      void fetchLogs();
+    }, 0);
+    return () => clearTimeout(timeout);
   }, [fetchLogs]);
 
   // Auto-refresh every 3 seconds

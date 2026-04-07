@@ -4,8 +4,11 @@ import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { TrendingUp, Target, MessageSquare, Users, Calendar } from "lucide-react";
+import { toast } from "sonner";
 
 interface PerfData {
   funnel: Record<string, number>;
@@ -15,6 +18,17 @@ interface PerfData {
   fitDistribution: Record<string, number>;
   fitPerformance: Record<string, { sent: number; accepted: number; rate: number }>;
   recentActivity: Array<{ action: string; request: string; success: boolean; createdAt: string }>;
+}
+
+interface Experiment {
+  id: string;
+  goal: string;
+  audienceFilter: string | null;
+  hypothesis: string;
+  successMetric: string;
+  status: string;
+  variants: Array<{ name: string; angle: string; message: string }>;
+  campaignName: string | null;
 }
 
 function RateBar({ label, value, color }: { label: string; value: number; color: string }) {
@@ -35,15 +49,53 @@ export default function PerformancePage() {
   const [data, setData] = useState<PerfData | null>(null);
   const [campaignFilter, setCampaignFilter] = useState("all");
   const [campaigns, setCampaigns] = useState<Array<{ id: string; name: string }>>([]);
+  const [experiments, setExperiments] = useState<Experiment[]>([]);
+  const [experimentGoal, setExperimentGoal] = useState("increase_accept_rate");
+  const [audienceFilter, setAudienceFilter] = useState("");
+  const [creatingExperiment, setCreatingExperiment] = useState(false);
 
   useEffect(() => {
     fetch("/api/campaigns").then(r => r.json()).then(d => setCampaigns(d.campaigns || [])).catch(() => {});
+    fetch("/api/experiments").then(r => r.json()).then(d => setExperiments(d.experiments || [])).catch(() => {});
   }, []);
 
   useEffect(() => {
     const params = campaignFilter !== "all" ? `?campaignId=${campaignFilter}` : "";
     fetch(`/api/performance${params}`).then(r => r.json()).then(setData).catch(() => {});
   }, [campaignFilter]);
+
+  const createExperiment = async () => {
+    const targetCampaignId = campaignFilter !== "all" ? campaignFilter : campaigns[0]?.id;
+    if (!targetCampaignId) {
+      toast.error("Create a campaign first");
+      return;
+    }
+
+    setCreatingExperiment(true);
+    try {
+      const res = await fetch("/api/experiments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          campaignId: targetCampaignId,
+          experimentGoal,
+          audienceFilter: audienceFilter || null,
+          variantCount: 3,
+        }),
+      });
+      const payload = await res.json();
+      if (!res.ok) {
+        toast.error(payload.error || "Could not create experiment");
+      } else {
+        setExperiments(prev => [payload.experiment, ...prev]);
+        toast.success("Experiment created");
+      }
+    } catch {
+      toast.error("Could not create experiment");
+    } finally {
+      setCreatingExperiment(false);
+    }
+  };
 
   if (!data) return <div className="py-20 text-center text-muted-foreground">Loading performance data...</div>;
 
@@ -78,7 +130,7 @@ export default function PerformancePage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex h-14 rounded overflow-hidden">
-            {funnelSteps.map((step, i) => {
+            {funnelSteps.map((step) => {
               const count = funnel[step.key] || 0;
               const maxCount = funnel.total || 1;
               const width = Math.max(count / maxCount * 100, count > 0 ? 5 : 1);
@@ -214,6 +266,53 @@ export default function PerformancePage() {
           </CardContent>
         </Card>
       )}
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm flex items-center gap-2"><MessageSquare className="h-4 w-4" />Message Experiments</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 lg:grid-cols-[180px,1fr,auto]">
+            <Select value={experimentGoal} onValueChange={(v) => { if (v) setExperimentGoal(v); }}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="increase_accept_rate">Increase accept rate</SelectItem>
+                <SelectItem value="increase_reply_rate">Increase reply rate</SelectItem>
+                <SelectItem value="improve_cta_quality">Improve CTA quality</SelectItem>
+              </SelectContent>
+            </Select>
+            <Input value={audienceFilter} onChange={(e) => setAudienceFilter(e.target.value)} placeholder="Audience filter, e.g. UK CFOs or HIGH fit only" />
+            <Button onClick={createExperiment} disabled={creatingExperiment}>{creatingExperiment ? "Creating..." : "New Experiment"}</Button>
+          </div>
+
+          {experiments.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No experiments yet. Generate one to test sharper messaging angles inside a campaign.</p>
+          ) : (
+            <div className="space-y-3">
+              {experiments.slice(0, 6).map((experiment) => (
+                <div key={experiment.id} className="rounded-lg border border-border p-4 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold">{experiment.campaignName || "General"} · {experiment.goal.replaceAll("_", " ")}</p>
+                      <p className="text-xs text-muted-foreground">{experiment.hypothesis}</p>
+                    </div>
+                    <Badge variant="secondary">{experiment.status}</Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Success metric: {experiment.successMetric}{experiment.audienceFilter ? ` · Audience: ${experiment.audienceFilter}` : ""}</p>
+                  <div className="grid gap-2 lg:grid-cols-3">
+                    {experiment.variants.map((variant) => (
+                      <div key={`${experiment.id}-${variant.name}`} className="rounded-md bg-card border border-border p-3">
+                        <p className="text-xs font-semibold">{variant.name} · {variant.angle}</p>
+                        <p className="mt-2 text-xs text-muted-foreground leading-relaxed">{variant.message}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

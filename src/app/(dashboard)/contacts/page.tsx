@@ -76,7 +76,12 @@ export default function ContactsPage() {
     if (data.allOwners?.length > 0) setOwners(data.allOwners);
   }, [page, search, statusFilter, fitFilter, campaignFilter, ownerFilter]);
 
-  useEffect(() => { fetchContacts(); }, [fetchContacts]);
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      void fetchContacts();
+    }, 0);
+    return () => clearTimeout(timeout);
+  }, [fetchContacts]);
 
   const handleDelete = async (id: string) => {
     await fetch(`/api/contacts/${id}`, { method: "DELETE" });

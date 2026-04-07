@@ -124,3 +124,104 @@ ${ctx.calendarUrl ? `- Include calendar link: ${ctx.calendarUrl}` : "- Suggest a
 
 Respond with ONLY the message text, nothing else.`;
 }
+
+export function getReplyStrategyPrompt(ctx: CampaignContext, knowledge: string): string {
+  return `You are a B2B revenue operator helping craft the best next reply on LinkedIn.
+
+CAMPAIGN: "${ctx.campaignName}"
+${ctx.campaignDescription ? `CAMPAIGN CONTEXT: ${ctx.campaignDescription}` : ""}
+${ctx.strategyNotes ? `MESSAGE STRATEGY: ${ctx.strategyNotes}` : ""}
+${ctx.calendarUrl ? `CALENDAR URL: ${ctx.calendarUrl}` : ""}
+${knowledge ? `LEARNINGS:\n${knowledge}` : ""}
+
+Classify the inbound message and recommend the best next move.
+Respond with ONLY valid JSON:
+{
+  "intent": "positive" | "neutral" | "objection" | "referral" | "not_now" | "not_relevant",
+  "strategy": "<short description of the best response strategy>",
+  "draft": "<reply draft>",
+  "cta": "<suggested CTA>",
+  "riskFlags": ["<risk 1>", "<risk 2>"]
+}
+
+Rules:
+- Keep the draft concise and natural for LinkedIn.
+- If the contact is warm, push gently toward a call.
+- If there is an objection, address it without sounding defensive.
+- If it is a referral, acknowledge and ask for the shortest next step.
+- Never invent facts not present in the provided context.`;
+}
+
+export function getMeetingBriefPrompt(ctx: CampaignContext, knowledge: string): string {
+  return `You are preparing a sales operator for a LinkedIn-originated meeting.
+
+CAMPAIGN: "${ctx.campaignName}"
+${ctx.campaignDescription ? `CAMPAIGN CONTEXT: ${ctx.campaignDescription}` : ""}
+${ctx.strategyNotes ? `MESSAGE STRATEGY: ${ctx.strategyNotes}` : ""}
+${ctx.calendarUrl ? `CALENDAR URL: ${ctx.calendarUrl}` : ""}
+${knowledge ? `LEARNINGS:\n${knowledge}` : ""}
+
+Respond with ONLY valid JSON:
+{
+  "executiveSummary": "<2-3 sentence summary>",
+  "likelyPains": ["<pain 1>", "<pain 2>"],
+  "objectionMap": ["<objection 1>", "<objection 2>"],
+  "talkTrack": ["<step 1>", "<step 2>", "<step 3>"],
+  "cta": "<ideal outcome for the meeting>"
+}
+
+Rules:
+- Be specific to the contact and campaign.
+- Focus on likely business pains, not generic sales filler.
+- The talk track should be practical and short.
+- Do not fabricate detailed company facts that are not present in the context.`;
+}
+
+export function getReactivationPrompt(ctx: CampaignContext, knowledge: string): string {
+  return `You are reactivating a stale B2B LinkedIn opportunity.
+
+CAMPAIGN: "${ctx.campaignName}"
+${ctx.campaignDescription ? `CAMPAIGN CONTEXT: ${ctx.campaignDescription}` : ""}
+${ctx.strategyNotes ? `MESSAGE STRATEGY: ${ctx.strategyNotes}` : ""}
+${ctx.calendarUrl ? `CALENDAR URL: ${ctx.calendarUrl}` : ""}
+${knowledge ? `LEARNINGS:\n${knowledge}` : ""}
+
+Respond with ONLY valid JSON:
+{
+  "reactivationReason": "<why it is worth reactivating now>",
+  "angle": "<best angle to reopen the conversation>",
+  "draft": "<reactivation draft message>"
+}
+
+Rules:
+- Keep the message short and low-friction.
+- Avoid sounding like an automated follow-up.
+- Use a fresh angle instead of repeating the original pitch.`;
+}
+
+export function getExperimentDesignPrompt(ctx: CampaignContext, knowledge: string): string {
+  return `You are designing a LinkedIn outbound messaging experiment.
+
+CAMPAIGN: "${ctx.campaignName}"
+${ctx.campaignDescription ? `CAMPAIGN CONTEXT: ${ctx.campaignDescription}` : ""}
+${ctx.strategyNotes ? `MESSAGE STRATEGY: ${ctx.strategyNotes}` : ""}
+${knowledge ? `LEARNINGS:\n${knowledge}` : ""}
+
+Respond with ONLY valid JSON:
+{
+  "hypothesis": "<single testable hypothesis>",
+  "successMetric": "<metric to optimize>",
+  "suggestedSampleSize": "<recommended sample size>",
+  "variants": [
+    { "name": "A", "angle": "<angle>", "message": "<message>" },
+    { "name": "B", "angle": "<angle>", "message": "<message>" },
+    { "name": "C", "angle": "<angle>", "message": "<message>" }
+  ]
+}
+
+Rules:
+- Design a practical experiment for LinkedIn invite or reply messaging.
+- Make the angles meaningfully different.
+- Keep each variant concise and realistic for execution.
+- Do not return markdown, only JSON.`;
+}
