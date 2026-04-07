@@ -129,6 +129,7 @@
 
 /* Agent chat prose — clean, professional, no bubbles */
 .prose-agent {
+  font-size: 0.7875rem; /* text-sm (0.875rem) − 10% */
   line-height: 1.6;
 }
 .prose-agent p { margin: 0.25em 0; }
