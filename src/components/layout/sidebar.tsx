@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
-  Users, ScrollText, Settings, MessageSquare, TrendingUp, Plus, Megaphone, BookOpen,
+  Users, ScrollText, Settings, LayoutDashboard, TrendingUp, Plus, Megaphone, BookOpen,
 } from "lucide-react";
 import { APP_VERSION } from "@/lib/constants";
 import { useEffect, useState } from "react";
@@ -12,7 +12,7 @@ import { useEffect, useState } from "react";
 interface Campaign { id: string; name: string; isActive: boolean }
 
 const navItems = [
-  { href: "/chat", label: "Agent", icon: MessageSquare },
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/contacts", label: "Contacts", icon: Users },
   { href: "/performance", label: "Analytics", icon: TrendingUp },
 ];
@@ -87,13 +87,13 @@ export function Sidebar() {
             <p className="px-3 text-[10px] text-muted-foreground/50 italic">No campaigns yet</p>
           )}
           {campaigns.map(c => {
-            const isActive = pathname === `/chat/${c.id}` || pathname === `/campaigns/${c.id}`;
+            const isActive = pathname === `/dashboard/${c.id}` || pathname === `/campaigns/${c.id}`;
             return (
               <div key={c.id} className={cn(
                 "flex items-center gap-1 px-3 py-1.5 text-[11px] rounded transition-colors group",
                 isActive ? "bg-accent text-primary font-semibold" : "text-muted-foreground hover:text-foreground hover:bg-accent"
               )}>
-                <Link href={`/chat/${c.id}`} className="flex items-center gap-2 flex-1 min-w-0">
+                <Link href={`/dashboard/${c.id}`} className="flex items-center gap-2 flex-1 min-w-0">
                   <Megaphone className="w-3 h-3 shrink-0" />
                   <span className="truncate">{c.name}</span>
                 </Link>

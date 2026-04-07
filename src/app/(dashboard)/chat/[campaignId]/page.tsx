@@ -1,9 +1,11 @@
 "use client";
 
-import { use } from "react";
-import ChatPage from "../chat-client";
+import { use, useEffect } from "react";
+import { useRouter } from "next/navigation";
 
-export default function CampaignChatPage({ params }: { params: Promise<{ campaignId: string }> }) {
+export default function ChatCampaignRedirect({ params }: { params: Promise<{ campaignId: string }> }) {
   const { campaignId } = use(params);
-  return <ChatPage campaignId={campaignId} />;
+  const router = useRouter();
+  useEffect(() => { router.replace(`/dashboard/${campaignId}`); }, [router, campaignId]);
+  return null;
 }

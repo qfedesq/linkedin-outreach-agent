@@ -9,5 +9,5 @@ export default async function HomePage() {
     redirect("/onboarding");
   }
 
-  redirect("/chat");
+  redirect("/dashboard");
 }

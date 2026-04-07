@@ -28,6 +28,7 @@ export async function POST(request: Request) {
         try { controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type, data })}\n\n`)); } catch {}
       };
 
+      let totalTokens = 0;
       try {
         const apiKey = decrypt(user.settings!.openrouterApiKey!);
         const model = user.settings!.preferredModel;
@@ -131,6 +132,7 @@ export async function POST(request: Request) {
           if (data.usage) {
             const pt = data.usage.prompt_tokens || 0;
             const ct = data.usage.completion_tokens || 0;
+            totalTokens += pt + ct;
             const cost = (pt * 0.003 + ct * 0.015) / 1000;
             await prisma.executionLog.create({
               data: { action: "llm_usage", request: `${model} | ${pt + ct} tokens`, response: JSON.stringify({ prompt_tokens: pt, completion_tokens: ct, total: pt + ct, cost }), success: true, duration: pt + ct, userId: user.id },
@@ -323,7 +325,7 @@ export async function POST(request: Request) {
           await debugLog(`Fallback sent | reason=${loopExitReason}`);
         }
 
-        send("done", "");
+        send("done", JSON.stringify({ tokens: totalTokens }));
       } catch (error) {
         const errMsg = (error as Error).message || "Unknown error";
         const isTimeout = errMsg.includes("abort") || errMsg.includes("timeout") || errMsg.includes("TimeoutError");
@@ -332,7 +334,7 @@ export async function POST(request: Request) {
           : `Error: ${errMsg}`;
         send("error", userMsg);
         send("content", userMsg);
-        send("done", "");
+        send("done", JSON.stringify({ tokens: totalTokens }));
         await logActivity(user.id, "agent_chat", { level: "error", message: `${isTimeout ? "TIMEOUT" : "Error"}: ${errMsg}`, success: false, errorCode: isTimeout ? "timeout" : errMsg.substring(0, 50) });
       }
 

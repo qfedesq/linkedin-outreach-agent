@@ -8,7 +8,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Loader2, Trash2, Users, Send, UserCheck, Inbox } from "lucide-react";
+import { Loader2, Trash2, Users, Send, UserCheck, Inbox, ArrowLeft } from "lucide-react";
+import Link from "next/link";
 
 interface Campaign {
   id: string; name: string; description: string | null;
@@ -32,6 +33,7 @@ export default function CampaignPage({ params }: { params: Promise<{ id: string 
   const { id } = use(params);
   const [campaign, setCampaign] = useState<Campaign | null>(null);
   const [contactCount, setContactCount] = useState(0);
+  const [statusCounts, setStatusCounts] = useState({ invited: 0, connected: 0, replied: 0 });
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [accountMap, setAccountMap] = useState<AccountMapItem[]>([]);
@@ -46,6 +48,12 @@ export default function CampaignPage({ params }: { params: Promise<{ id: string 
       .then(r => r.json())
       .then(d => setAccountMap(d.accounts || []))
       .catch(() => {});
+    // Fetch real status counts
+    Promise.all([
+      fetch(`/api/contacts?campaignId=${id}&status=INVITED&limit=1`).then(r => r.json()).then(d => d.total || 0),
+      fetch(`/api/contacts?campaignId=${id}&status=CONNECTED&limit=1`).then(r => r.json()).then(d => d.total || 0),
+      fetch(`/api/contacts?campaignId=${id}&status=REPLIED&limit=1`).then(r => r.json()).then(d => d.total || 0),
+    ]).then(([invited, connected, replied]) => setStatusCounts({ invited, connected, replied })).catch(() => {});
   }, [id]);
 
   const save = async () => {
@@ -67,7 +75,7 @@ export default function CampaignPage({ params }: { params: Promise<{ id: string 
     if (!confirm("Delete this campaign? Contacts won't be deleted.")) return;
     await fetch(`/api/campaigns/${id}`, { method: "DELETE" });
     toast.success("Deleted");
-    window.location.href = "/chat";
+    window.location.href = "/dashboard";
   };
 
   if (loading) return <div className="py-20 text-center text-muted-foreground">Loading...</div>;
@@ -77,6 +85,9 @@ export default function CampaignPage({ params }: { params: Promise<{ id: string 
 
   return (
     <div className="max-w-3xl space-y-6">
+      <Link href={`/dashboard/${id}`} className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors mb-1">
+        <ArrowLeft className="h-3.5 w-3.5" />Back to campaign dashboard
+      </Link>
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">{campaign.name}</h1>
@@ -93,9 +104,9 @@ export default function CampaignPage({ params }: { params: Promise<{ id: string 
       {/* Stats */}
       <div className="grid grid-cols-4 gap-3">
         <Card><CardContent className="p-3 text-center"><Users className="h-4 w-4 mx-auto mb-1 text-muted-foreground" /><p className="text-lg font-bold">{contactCount}</p><p className="text-[10px] text-muted-foreground">Contacts</p></CardContent></Card>
-        <Card><CardContent className="p-3 text-center"><Send className="h-4 w-4 mx-auto mb-1 text-blue-500" /><p className="text-lg font-bold">0</p><p className="text-[10px] text-muted-foreground">Invited</p></CardContent></Card>
-        <Card><CardContent className="p-3 text-center"><UserCheck className="h-4 w-4 mx-auto mb-1 text-green-500" /><p className="text-lg font-bold">0</p><p className="text-[10px] text-muted-foreground">Connected</p></CardContent></Card>
-        <Card><CardContent className="p-3 text-center"><Inbox className="h-4 w-4 mx-auto mb-1 text-purple-500" /><p className="text-lg font-bold">0</p><p className="text-[10px] text-muted-foreground">Replied</p></CardContent></Card>
+        <Card><CardContent className="p-3 text-center"><Send className="h-4 w-4 mx-auto mb-1 text-blue-500" /><p className="text-lg font-bold">{statusCounts.invited}</p><p className="text-[10px] text-muted-foreground">Invited</p></CardContent></Card>
+        <Card><CardContent className="p-3 text-center"><UserCheck className="h-4 w-4 mx-auto mb-1 text-green-500" /><p className="text-lg font-bold">{statusCounts.connected}</p><p className="text-[10px] text-muted-foreground">Connected</p></CardContent></Card>
+        <Card><CardContent className="p-3 text-center"><Inbox className="h-4 w-4 mx-auto mb-1 text-purple-500" /><p className="text-lg font-bold">{statusCounts.replied}</p><p className="text-[10px] text-muted-foreground">Replied</p></CardContent></Card>
       </div>
 
       {/* Campaign Config */}

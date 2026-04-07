@@ -1,7 +1,10 @@
 "use client";
 
-import ChatPage from "./chat-client";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 
-export default function GeneralChatPage() {
-  return <ChatPage />;
+export default function ChatRedirect() {
+  const router = useRouter();
+  useEffect(() => { router.replace("/dashboard"); }, [router]);
+  return null;
 }
