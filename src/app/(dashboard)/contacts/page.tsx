@@ -109,7 +109,9 @@ export default function ContactsPage() {
       c.campaignId ? (campaignMap[c.campaignId] || c.campaignId) : "",
       c.source || "", c.inviteSentDate || "", c.connectedDate || "",
     ]);
-    const csv = [headers, ...rows].map((r) => r.map((v) => `"${v}"`).join(",")).join("\n");
+    // M3 fix: escape internal quotes per RFC 4180 so fields with commas/quotes don't break CSV
+    const escapeCsv = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const csv = [headers, ...rows].map((r) => r.map(escapeCsv).join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");

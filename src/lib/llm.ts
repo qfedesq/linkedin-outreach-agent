@@ -107,12 +107,14 @@ Respond with ONLY the connection note text, nothing else.`;
 
 export function getFollowupPrompt(ctx: CampaignContext): string {
   const who = ctx.userName || "the outreach team";
-  const desc = ctx.campaignDescription || ctx.campaignName;
+  const desc = ctx.campaignDescription || "";
 
   return `You are writing a LinkedIn follow-up message on behalf of ${who}.
 
 CAMPAIGN: "${ctx.campaignName}"
 ${desc ? `CONTEXT: ${desc}` : ""}
+${ctx.icpDefinition ? `TARGET ICP: ${ctx.icpDefinition.substring(0, 300)}` : ""}
+${ctx.strategyNotes ? `MESSAGING STRATEGY: ${ctx.strategyNotes}` : ""}
 
 This person accepted a connection request related to this campaign but hasn't replied.
 
@@ -123,7 +125,7 @@ ${ctx.calendarUrl ? `- Include calendar link: ${ctx.calendarUrl}` : "- Suggest a
 - Tone: warm re-opener, not a second pitch
 - NEVER re-explain the whole product
 - ONE follow-up only
-- Message must be relevant to the campaign above
+- Message MUST relate to "${ctx.campaignName}" strategy above — do NOT use angles from other campaigns
 
 Respond with ONLY the message text, nothing else.`;
 }

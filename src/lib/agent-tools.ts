@@ -554,7 +554,13 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
             }
           }
         }
-        if (!providerId || providerId.startsWith("urn:")) { failed++; continue; }
+        // C2 fix: URN-only contacts can't be sent — mark batch item with error reason so it's visible
+        if (!providerId || providerId.startsWith("urn:")) {
+          failed++;
+          await prisma.inviteBatchItem.update({ where: { id: item.id }, data: { sent: true, sendResult: "failed: could not resolve LinkedIn profile ID (URN only — no Unipile provider_id)" } });
+          await logActivity(userId, "send_invite", { level: "error", message: `${contact.name}: No valid Unipile profile ID (had: ${providerId || "none"})`, contactId: contact.id, success: false, errorCode: "missing_provider_id" });
+          continue;
+        }
 
         try {
           progress(`Sending invite to ${contact.name}...`);
@@ -572,14 +578,24 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
         } catch (e) {
           const errMsg = (e as Error).message;
 
-          // 422 "Cannot resend" — LinkedIn already has a pending invite for this contact
-          // This is NOT a rate limit — do NOT log with errorCode (would trigger cooldown)
-          if (errMsg.includes("422") || errMsg.includes("Cannot resend") || errMsg.includes("already")) {
+          // C1 fix: narrow 422 check — only treat as "pending invite exists" for specific phrases.
+          // Previously `errMsg.includes("already")` was too broad and caught unrelated errors.
+          // Also: don't overwrite inviteSentDate — we don't know when the original invite was sent.
+          const isPendingInvite = errMsg.includes("Cannot resend") || errMsg.includes("already invited") || (errMsg.includes("422") && errMsg.includes("pending"));
+          if (isPendingInvite) {
             blocked++;
-            await prisma.inviteBatchItem.update({ where: { id: item.id }, data: { sent: true, sendResult: "skipped: already invited on LinkedIn" } });
-            // Mark as INVITED since LinkedIn already has the pending invite
-            await prisma.contact.update({ where: { id: contact.id }, data: { status: "INVITED", inviteSentDate: new Date() } });
-            await logActivity(userId, "send_invite", { level: "warning", message: `${contact.name}: Already has pending LinkedIn invite (422). Marked as INVITED.`, contactId: contact.id, success: true }); // success: true to NOT trigger cooldown
+            await prisma.inviteBatchItem.update({ where: { id: item.id }, data: { sent: true, sendResult: "skipped: pending invite already exists on LinkedIn" } });
+            // Mark INVITED but do NOT set inviteSentDate (unknown when original was sent)
+            await prisma.contact.update({ where: { id: contact.id }, data: { status: "INVITED" } });
+            await logActivity(userId, "send_invite", { level: "warning", message: `${contact.name}: Pending invite already exists (422). Marked INVITED.`, contactId: contact.id, success: true }); // success: true to NOT trigger cooldown
+            continue;
+          }
+
+          // Any other 422 or error: keep contact as TO_CONTACT so it can be retried
+          if (errMsg.includes("422")) {
+            failed++;
+            await prisma.inviteBatchItem.update({ where: { id: item.id }, data: { sent: true, sendResult: `failed (422): ${errMsg.substring(0, 100)}` } });
+            await logActivity(userId, "send_invite", { level: "error", message: `${contact.name}: 422 error (not pending invite) — ${errMsg.substring(0, 100)}`, contactId: contact.id, success: false, errorCode: "linkedin_422" });
             continue;
           }
 
@@ -687,12 +703,16 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
           if (c.campaignId) {
             if (!fCampCache.has(c.campaignId)) {
               const camp = await prisma.campaign.findFirst({ where: { id: c.campaignId, userId } });
-              if (camp) fCampCache.set(c.campaignId, { userName: fUserName, campaignName: camp.name, campaignDescription: camp.description || undefined, calendarUrl: camp.calendarUrl || settings.calendarBookingUrl || undefined });
+              // H1 fix: include strategyNotes + icpDefinition so follow-up messages use campaign strategy
+              if (camp) fCampCache.set(c.campaignId, { userName: fUserName, campaignName: camp.name, campaignDescription: camp.description || undefined, strategyNotes: camp.strategyNotes || undefined, icpDefinition: camp.icpDefinition || undefined, calendarUrl: camp.calendarUrl || settings.calendarBookingUrl || undefined });
             }
             fCtx = fCampCache.get(c.campaignId) || fCtx;
           }
           const fPrompt = getFollowupPrompt(fCtx);
           const msg = (await callLLM(fPrompt, userPrompt, settings.openrouterApiKey, settings.preferredModel, { temperature: 0.7, maxTokens: 300 })).trim();
+          // M2 fix: re-fetch status before sending to guard against concurrent changes
+          const freshContact = await prisma.contact.findUnique({ where: { id: c.id }, select: { status: true } });
+          if (freshContact?.status !== "CONNECTED") { skippedFollowup++; continue; }
           await linkedin.sendMessage([c.linkedinProfileId!], msg);
           await prisma.contact.update({ where: { id: c.id }, data: { status: "FOLLOWED_UP", followupSentDate: new Date() } });
           sent++;
@@ -745,10 +765,10 @@ export async function executeTool(name: string, args: Record<string, unknown>, u
     case "list_campaigns": {
       const campaigns = await prisma.campaign.findMany({ where: { userId }, orderBy: { createdAt: "desc" } });
       if (campaigns.length === 0) return { success: true, message: "No campaigns yet. Create one with create_campaign." };
-      const list = await Promise.all(campaigns.map(async c => {
-        const contacts = await prisma.contact.count({ where: { userId, campaignId: c.id } });
-        return `• **${c.name}** (${c.isActive ? "active" : "paused"}) — ${contacts} contacts${c.description ? ` — ${c.description.substring(0, 50)}` : ""}`;
-      }));
+      // M1 fix: single groupBy query instead of N separate count() calls
+      const contactCounts = await prisma.contact.groupBy({ by: ["campaignId"], where: { userId, campaignId: { not: null } }, _count: { id: true } });
+      const countMap = new Map(contactCounts.map(r => [r.campaignId!, r._count.id]));
+      const list = campaigns.map(c => `• **${c.name}** (${c.isActive ? "active" : "paused"}) — ${countMap.get(c.id) || 0} contacts${c.description ? ` — ${c.description.substring(0, 50)}` : ""}`);
       return { success: true, data: campaigns.map(c => ({ id: c.id, name: c.name, isActive: c.isActive })), message: `${campaigns.length} campaigns:\n${list.join("\n")}` };
     }
 
