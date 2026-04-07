@@ -16,6 +16,7 @@ export default function LoginPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
+  const isLoading = status === "loading";
 
   useEffect(() => {
     if (session) router.push("/");
@@ -30,14 +31,6 @@ export default function LoginPage() {
     }, 0);
     return () => clearTimeout(timeout);
   }, []);
-
-  if (status === "loading") {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <p className="text-muted-foreground">Loading...</p>
-      </div>
-    );
-  }
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-background">
@@ -60,9 +53,10 @@ export default function LoginPage() {
           <Button
             className="w-full"
             size="lg"
+            disabled={isLoading}
             onClick={() => signIn("google", { callbackUrl: "/" })}
           >
-            Sign in with Google
+            {isLoading ? "Checking session..." : "Sign in with Google"}
           </Button>
           <p className="text-xs text-center text-muted-foreground">
             Restricted to @protofire.io accounts
