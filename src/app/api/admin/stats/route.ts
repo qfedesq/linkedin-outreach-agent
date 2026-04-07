@@ -135,6 +135,7 @@ export async function GET(request: NextRequest) {
     const chatMsgs = await prisma.chatMessage.count({ where: { userId: user.id } });
 
     return {
+      id: user.id,
       email: user.email,
       name: user.name || "",
       linkedin: !!user.settings?.unipileApiKey,

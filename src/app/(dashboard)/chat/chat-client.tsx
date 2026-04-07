@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { Send, Loader2, Users, UserCheck, Inbox, Calendar, Copy, Check, ChevronRight, ChevronDown } from "lucide-react";
+import { Send, Loader2, Users, UserCheck, Inbox, Calendar, Copy, Check, ChevronRight, ChevronDown, ThumbsUp, ThumbsDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface Message { role: "user" | "assistant"; content: string; thinking?: string[] }
@@ -27,6 +27,10 @@ export default function ChatPage({ campaignId }: { campaignId?: string }) {
   const [history, setHistory] = useState<Array<{ role: string; content: string }>>([]);
   const [stats, setStats] = useState<Stats>({ total: 0, invited: 0, connected: 0, replied: 0, meetings: 0 });
   const [initialized, setInitialized] = useState(false);
+  const [ratings, setRatings] = useState<Map<number, "up" | "down">>(new Map());
+  const [feedbackOpen, setFeedbackOpen] = useState<number | null>(null);
+  const [feedbackWrong, setFeedbackWrong] = useState("");
+  const [feedbackExpected, setFeedbackExpected] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -145,6 +149,35 @@ export default function ChatPage({ campaignId }: { campaignId?: string }) {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
   };
 
+  const handleRate = async (msgIdx: number, content: string, rating: "up" | "down") => {
+    if (ratings.has(msgIdx)) return; // already rated
+    setRatings(prev => new Map(prev).set(msgIdx, rating));
+    if (rating === "down") {
+      setFeedbackOpen(msgIdx);
+      setFeedbackWrong("");
+      setFeedbackExpected("");
+    } else {
+      // Thumbs up: save silently
+      await fetch("/api/chat/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messageContent: content, rating: "up" }),
+      });
+    }
+  };
+
+  const submitFeedback = async (msgIdx: number, content: string) => {
+    await fetch("/api/chat/feedback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messageContent: content, rating: "down", wrongText: feedbackWrong, expectedText: feedbackExpected }),
+    });
+    setFeedbackOpen(null);
+    setFeedbackWrong("");
+    setFeedbackExpected("");
+    toast.success("Feedback saved — the agent will learn from this");
+  };
+
   const statItems = [
     { label: "Contacts", value: stats.total, icon: Users },
     { label: "Invited", value: stats.invited, icon: Send },
@@ -201,6 +234,60 @@ export default function ChatPage({ campaignId }: { campaignId?: string }) {
                     <div className="text-sm text-foreground leading-relaxed max-w-none prose-agent" dangerouslySetInnerHTML={{ __html: fmtMd(msg.content) }} />
                     <CopyButton text={msg.content} />
                   </div>
+                  {/* Rating buttons */}
+                  <div className="flex items-center gap-1 pt-0.5 pl-0.5">
+                    {ratings.get(i) === undefined ? (
+                      <>
+                        <button
+                          onClick={() => handleRate(i, msg.content, "up")}
+                          className="opacity-0 group-hover:opacity-100 transition-opacity h-6 w-6 rounded flex items-center justify-center text-muted-foreground/50 hover:text-green-500 hover:bg-green-500/10"
+                          title="Good response"
+                        >
+                          <ThumbsUp className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleRate(i, msg.content, "down")}
+                          className="opacity-0 group-hover:opacity-100 transition-opacity h-6 w-6 rounded flex items-center justify-center text-muted-foreground/50 hover:text-red-500 hover:bg-red-500/10"
+                          title="Bad response"
+                        >
+                          <ThumbsDown className="h-3.5 w-3.5" />
+                        </button>
+                      </>
+                    ) : ratings.get(i) === "up" ? (
+                      <span className="flex items-center gap-1 text-[10px] text-green-500"><ThumbsUp className="h-3 w-3" /></span>
+                    ) : (
+                      <span className="flex items-center gap-1 text-[10px] text-red-500"><ThumbsDown className="h-3 w-3" /></span>
+                    )}
+                  </div>
+                  {/* Inline feedback form for thumbs down */}
+                  {feedbackOpen === i && (
+                    <div className="mt-2 p-3 rounded-xl border border-border bg-card space-y-2 max-w-xl">
+                      <p className="text-xs font-medium text-foreground">What was wrong with this response?</p>
+                      <textarea
+                        value={feedbackWrong}
+                        onChange={e => setFeedbackWrong(e.target.value)}
+                        placeholder="Describe what was incorrect or unhelpful..."
+                        className="w-full resize-none bg-transparent border border-border rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50 min-h-[56px]"
+                        rows={2}
+                      />
+                      <p className="text-xs font-medium text-foreground">What did you expect instead?</p>
+                      <textarea
+                        value={feedbackExpected}
+                        onChange={e => setFeedbackExpected(e.target.value)}
+                        placeholder="Describe the ideal response or action..."
+                        className="w-full resize-none bg-transparent border border-border rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50 min-h-[56px]"
+                        rows={2}
+                      />
+                      <div className="flex gap-2">
+                        <Button size="sm" className="h-7 text-xs" onClick={() => submitFeedback(i, msg.content)} disabled={!feedbackWrong.trim() && !feedbackExpected.trim()}>
+                          Submit feedback
+                        </Button>
+                        <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => { setFeedbackOpen(null); setRatings(prev => { const n = new Map(prev); n.delete(i); return n; }); }}>
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

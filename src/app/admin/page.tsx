@@ -1,16 +1,18 @@
 "use client";
 
 import { useSession } from "next-auth/react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Users, Activity, Send, UserCheck, MessageSquare, TrendingUp, AlertTriangle,
   Download, Brain, DollarSign, Clock, Megaphone, CheckCircle, XCircle,
+  ChevronRight, ChevronDown, Terminal, MessageCircle, Wrench, AlertCircle,
 } from "lucide-react";
 
 interface UserStat {
+  id: string;
   email: string;
   name: string;
   linkedin: boolean;
@@ -25,6 +27,10 @@ interface UserStat {
   tokens: number;
   cost: number;
 }
+
+type TimelineEvent =
+  | { type: "chat"; id: string; createdAt: string; role: string; content: string; campaignId: string | null }
+  | { type: "execution"; id: string; createdAt: string; action: string; request: string | null; response: string | null; success: boolean; errorCode: string | null; duration: number | null; contactId: string | null };
 
 interface AdminData {
   totalUsers: number;
@@ -53,6 +59,15 @@ export default function AdminPage() {
   const [period, setPeriod] = useState("month");
   const [showActiveOnly, setShowActiveOnly] = useState(false);
 
+  // User logs state
+  const [selectedUserId, setSelectedUserId] = useState<string>("");
+  const [logsFilter, setLogsFilter] = useState<"all" | "chat" | "execution" | "errors">("all");
+  const [logEvents, setLogEvents] = useState<TimelineEvent[]>([]);
+  const [logTotal, setLogTotal] = useState(0);
+  const [logOffset, setLogOffset] = useState(0);
+  const [logsLoading, setLogsLoading] = useState(false);
+  const [expandedEvents, setExpandedEvents] = useState<Set<string>>(new Set());
+
   useEffect(() => {
     setLoading(true);
     if (session?.user?.email === "federico.ledesma@protofire.io") {
@@ -65,6 +80,30 @@ export default function AdminPage() {
       setLoading(false);
     }
   }, [session, period]);
+
+  const fetchUserLogs = useCallback(async (uid: string, filter: string, offset: number) => {
+    if (!uid) return;
+    setLogsLoading(true);
+    try {
+      const res = await fetch(`/api/admin/user-logs?userId=${uid}&type=${filter}&offset=${offset}&limit=150`);
+      const d = await res.json();
+      setLogEvents(d.events || []);
+      setLogTotal(d.total || 0);
+    } catch {}
+    setLogsLoading(false);
+  }, []);
+
+  useEffect(() => {
+    if (selectedUserId) fetchUserLogs(selectedUserId, logsFilter, logOffset);
+  }, [selectedUserId, logsFilter, logOffset, fetchUserLogs]);
+
+  const toggleExpand = (id: string) => {
+    setExpandedEvents(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
 
   if (!session) return <div className="flex items-center justify-center h-screen text-muted-foreground">Loading session...</div>;
   if (session.user?.email !== "federico.ledesma@protofire.io") {
@@ -289,6 +328,180 @@ export default function AdminPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* ===== User Activity Log ===== */}
+      <Card>
+        <CardHeader>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Terminal className="w-4 h-4" />
+              User Activity Log
+            </CardTitle>
+            <div className="flex flex-wrap items-center gap-2">
+              {/* User selector */}
+              <select
+                value={selectedUserId}
+                onChange={e => { setSelectedUserId(e.target.value); setLogOffset(0); }}
+                className="text-sm border border-border rounded-lg px-3 py-1.5 bg-card min-w-[200px]"
+              >
+                <option value="">Select a user...</option>
+                {data.users.map(u => (
+                  <option key={u.id} value={u.id}>{u.name || u.email.split("@")[0]} ({u.email})</option>
+                ))}
+              </select>
+              {/* Filter tabs */}
+              {selectedUserId && (
+                <div className="flex gap-1">
+                  {(["all", "chat", "execution", "errors"] as const).map(f => (
+                    <button
+                      key={f}
+                      onClick={() => { setLogsFilter(f); setLogOffset(0); }}
+                      className={`text-xs px-2.5 py-1 rounded-md border transition-colors ${logsFilter === f ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:text-foreground"}`}
+                    >
+                      {f === "all" ? "All" : f === "chat" ? "Chat" : f === "execution" ? "Tools" : "Errors"}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {!selectedUserId && (
+            <p className="text-sm text-muted-foreground text-center py-8">Select a user to view their full activity log</p>
+          )}
+          {selectedUserId && logsLoading && (
+            <p className="text-sm text-muted-foreground text-center py-8">Loading...</p>
+          )}
+          {selectedUserId && !logsLoading && logEvents.length === 0 && (
+            <p className="text-sm text-muted-foreground text-center py-8">No events found for this user with the current filter.</p>
+          )}
+          {selectedUserId && !logsLoading && logEvents.length > 0 && (
+            <div className="space-y-0.5">
+              {/* Header */}
+              <div className="grid grid-cols-[120px_80px_1fr_80px] gap-2 px-2 pb-1 border-b border-border text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                <span>Time</span>
+                <span>Type</span>
+                <span>Event</span>
+                <span className="text-right">Duration</span>
+              </div>
+              {logEvents.map(ev => {
+                const expanded = expandedEvents.has(ev.id);
+                const ts = new Date(ev.createdAt);
+                const timeStr = ts.toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+
+                if (ev.type === "chat") {
+                  const isUser = ev.role === "user";
+                  return (
+                    <div key={ev.id} className="group">
+                      <button
+                        onClick={() => toggleExpand(ev.id)}
+                        className={`w-full grid grid-cols-[120px_80px_1fr_80px] gap-2 px-2 py-1.5 rounded text-left transition-colors hover:bg-accent/30 ${isUser ? "bg-blue-500/5" : "bg-transparent"}`}
+                      >
+                        <span className="text-[10px] text-muted-foreground font-mono leading-tight">{timeStr}</span>
+                        <span className={`text-[10px] flex items-center gap-1 ${isUser ? "text-blue-500" : "text-muted-foreground"}`}>
+                          <MessageCircle className="h-3 w-3 shrink-0" />
+                          {isUser ? "User" : "Agent"}
+                        </span>
+                        <span className="text-xs text-foreground truncate leading-tight">{ev.content.slice(0, 120)}{ev.content.length > 120 ? "..." : ""}</span>
+                        <span className="text-[10px] text-right text-muted-foreground flex items-center justify-end gap-1">
+                          {ev.campaignId && <span className="text-[9px] bg-muted px-1 rounded">campaign</span>}
+                          {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                        </span>
+                      </button>
+                      {expanded && (
+                        <div className={`mx-2 mb-1 mt-0.5 p-2 rounded text-xs leading-relaxed whitespace-pre-wrap font-mono ${isUser ? "bg-blue-500/10 text-blue-900 dark:text-blue-200" : "bg-muted/50 text-foreground"}`}>
+                          {ev.content}
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
+
+                // Execution log
+                const isDebug = ev.action === "chat_debug";
+                const isError = !ev.success;
+                const isLLM = ev.action === "llm_usage";
+                let rowBg = "bg-transparent";
+                if (isError) rowBg = "bg-red-500/5";
+                else if (isLLM) rowBg = "bg-purple-500/5";
+                else if (isDebug) rowBg = "bg-transparent opacity-60";
+
+                let actionColor = "text-foreground";
+                if (isError) actionColor = "text-red-500";
+                else if (isLLM) actionColor = "text-purple-500";
+                else if (ev.success) actionColor = "text-green-600 dark:text-green-400";
+
+                let actionIcon = <Wrench className="h-3 w-3 shrink-0" />;
+                if (isError) actionIcon = <AlertCircle className="h-3 w-3 shrink-0" />;
+                else if (isDebug) actionIcon = <Terminal className="h-3 w-3 shrink-0" />;
+                else if (isLLM) actionIcon = <Brain className="h-3 w-3 shrink-0" />;
+
+                // Build event summary
+                let summary = ev.action;
+                if (isDebug && ev.request) {
+                  try { const parsed = typeof ev.request === "string" && ev.request.startsWith("{") ? JSON.parse(ev.request) : null; summary = parsed?.message || ev.action; } catch {}
+                } else if (isLLM && ev.request) {
+                  summary = ev.request;
+                } else if (ev.request && !ev.request.startsWith("{")) {
+                  summary = `${ev.action}: ${ev.request.slice(0, 80)}`;
+                }
+
+                return (
+                  <div key={ev.id} className="group">
+                    <button
+                      onClick={() => toggleExpand(ev.id)}
+                      className={`w-full grid grid-cols-[120px_80px_1fr_80px] gap-2 px-2 py-1.5 rounded text-left transition-colors hover:bg-accent/30 ${rowBg}`}
+                    >
+                      <span className="text-[10px] text-muted-foreground font-mono leading-tight">{timeStr}</span>
+                      <span className={`text-[10px] flex items-center gap-1 ${actionColor}`}>
+                        {actionIcon}
+                        {ev.action.replace(/_/g, " ")}
+                      </span>
+                      <span className="text-xs text-muted-foreground truncate leading-tight">{summary}</span>
+                      <span className="text-[10px] text-right text-muted-foreground flex items-center justify-end gap-1">
+                        {ev.duration ? `${ev.duration}ms` : ""}
+                        {ev.errorCode && <span className="text-[9px] bg-red-500/20 text-red-600 px-1 rounded">{ev.errorCode}</span>}
+                        {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                      </span>
+                    </button>
+                    {expanded && (
+                      <div className="mx-2 mb-1 mt-0.5 space-y-1">
+                        {ev.request && (
+                          <div className="p-2 rounded bg-muted/50">
+                            <p className="text-[9px] font-bold text-muted-foreground uppercase mb-1">Request</p>
+                            <pre className="text-[10px] text-foreground whitespace-pre-wrap font-mono leading-relaxed overflow-x-auto">{(() => { try { return JSON.stringify(JSON.parse(ev.request!), null, 2); } catch { return ev.request; } })()}</pre>
+                          </div>
+                        )}
+                        {ev.response && (
+                          <div className="p-2 rounded bg-muted/50">
+                            <p className="text-[9px] font-bold text-muted-foreground uppercase mb-1">Response</p>
+                            <pre className="text-[10px] text-foreground whitespace-pre-wrap font-mono leading-relaxed overflow-x-auto">{(() => { try { return JSON.stringify(JSON.parse(ev.response!), null, 2); } catch { return ev.response; } })()}</pre>
+                          </div>
+                        )}
+                        {ev.errorCode && (
+                          <div className="p-2 rounded bg-red-500/10">
+                            <p className="text-[9px] font-bold text-red-500 uppercase mb-1">Error Code</p>
+                            <p className="text-xs text-red-600 font-mono">{ev.errorCode}</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              {/* Pagination */}
+              <div className="flex items-center justify-between pt-3 border-t border-border mt-2">
+                <p className="text-xs text-muted-foreground">{logOffset + 1}–{Math.min(logOffset + 150, logTotal)} of {logTotal} events</p>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" disabled={logOffset === 0} onClick={() => setLogOffset(Math.max(0, logOffset - 150))}>Previous</Button>
+                  <Button variant="outline" size="sm" disabled={logOffset + 150 >= logTotal} onClick={() => setLogOffset(logOffset + 150)}>Next</Button>
+                </div>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
