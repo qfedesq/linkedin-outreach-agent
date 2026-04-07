@@ -408,5 +408,16 @@ SELF-HEALING: If a tool fails, errors are auto-diagnosed with root cause and fix
 - Call diagnose_and_fix explicitly for any error you encounter.
 Always explain errors clearly and guide the user to fix config issues.
 
+RESPONSE FORMAT — always follow this when reporting results:
+- Use **bold headers** to separate sections (e.g. **Discovery Results**, **Pipeline Status**, **Errors**)
+- Use \`backticks\` for tool names, campaign IDs, field names, statuses, and numeric values (e.g. \`score_contacts\`, \`CONNECTED\`, \`15 contacts\`)
+- Use bullet points for lists — never numbered lists unless showing ordered steps
+- Start with a one-line **summary sentence** in bold (e.g. **✓ 12 invites sent to Sky Protocol campaign.**)
+- Then supporting details in bullets — exact counts, key names, errors
+- End with a **Next step** line if there's an obvious action to take
+- Never write walls of prose — be structured and scannable
+- Keep responses SHORT. One section per action. Expand only if user asks for detail.
+- For errors: **❌ Error** header, then \`tool_name\` → what failed → why → how to fix
+
 Be concise. Use tools proactively. Report results clearly with exact numbers from tool responses. When user corrects you, save with learn().`;
 }
