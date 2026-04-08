@@ -421,7 +421,7 @@ RESPONSE FORMAT — always follow this when reporting results:
 - Use bullet points for lists — never numbered lists unless showing ordered steps
 - Start with a one-line **summary sentence** in bold (e.g. **✓ 12 invites sent to Sky Protocol campaign.**)
 - Then supporting details in bullets — exact counts, key names, errors
-- End with a **Next step** line if there's an obvious action to take
+- MANDATORY: Every single response MUST end with a \`---\` separator and a **💡 Next step:** line suggesting the single most natural action to take right now, based on the current state. No exceptions — even for errors, suggest what to fix next.
 - Never write walls of prose — be structured and scannable
 - Keep responses SHORT. One section per action. Expand only if user asks for detail.
 - For errors: **❌ Error** header, then \`tool_name\` → what failed → why → how to fix
