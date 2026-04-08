@@ -40,8 +40,9 @@ const ALLOWED_DOMAINS = new Set([
 
 export interface PrismaQueryConfig {
   model: string;
-  operation: "findMany" | "findFirst" | "count" | "groupBy" | "aggregate";
+  operation: "findMany" | "findFirst" | "count" | "groupBy" | "aggregate" | "updateMany" | "deleteMany" | "create";
   where?: Record<string, unknown>;
+  data?: Record<string, unknown>; // for updateMany / create
   select?: Record<string, boolean>;
   orderBy?: Record<string, string> | Array<Record<string, string>>;
   take?: number;
@@ -156,7 +157,37 @@ async function runPrismaQuery(
       _max: config._max,
     });
   }
-  throw new Error(`Unsupported operation: ${op}`);
+
+  // ── WRITE OPERATIONS ──────────────────────────────────────────────────────
+  // userId is always injected into where; cannot be set via 'data'
+
+  if (op === "updateMany") {
+    if (!config.data) throw new Error("updateMany requires a 'data' field with the fields to update");
+    // Strip userId from data — must never be overwritten via DSL
+    const safeData = Object.fromEntries(
+      Object.entries(config.data).filter(([k]) => k !== "userId")
+    );
+    const result = await modelClient.updateMany({ where: safeWhere, data: safeData });
+    return result; // { count: N }
+  }
+
+  if (op === "deleteMany") {
+    // Safety: require at least one where clause beyond userId to prevent mass deletes
+    const extraKeys = Object.keys(safeWhere).filter(k => k !== "userId");
+    if (extraKeys.length === 0) {
+      throw new Error("deleteMany requires at least one where clause beyond userId to prevent accidental mass deletion");
+    }
+    const result = await modelClient.deleteMany({ where: safeWhere });
+    return result; // { count: N }
+  }
+
+  if (op === "create") {
+    if (!config.data) throw new Error("create requires a 'data' field");
+    const safeData = { ...config.data, userId }; // always force userId
+    return modelClient.create({ data: safeData, select: config.select });
+  }
+
+  throw new Error(`Unsupported operation: ${op}. Allowed: findMany, findFirst, count, groupBy, aggregate, updateMany, deleteMany, create`);
 }
 
 // ─────────────────────── HTTP executor ───────────────────────

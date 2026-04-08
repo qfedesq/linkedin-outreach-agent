@@ -34,10 +34,15 @@ const SCHEMA_CONTEXT = `
 - dailyRun: id, phase, prospectsFound, invitesSent, newConnections, followupsSent, newReplies, meetingsBooked, status, createdAt
 
 ## Supported Handler Types
-1. prisma_query — query the DB
-   { model, operation (findMany|findFirst|count|groupBy|aggregate), where, select, orderBy, take, by, _count, _sum, _avg }
-   IMPORTANT: userId is ALWAYS auto-injected — never include it in 'where'
-   Use {{arg_name}} inside where values to reference tool arguments
+1. prisma_query — query OR mutate the DB
+   { model, operation, where, select, orderBy, take, by, _count, _sum, _avg, data }
+   READ operations:  findMany | findFirst | count | groupBy | aggregate
+   WRITE operations: updateMany | deleteMany | create
+   IMPORTANT: userId is ALWAYS auto-injected — never include it in 'where' or 'data'
+   Use {{arg_name}} inside where/data values to reference tool arguments
+   - updateMany: requires 'data' (fields to set), 'where' to scope
+   - deleteMany: requires at least one 'where' clause beyond userId
+   - create: requires 'data' (userId auto-added)
 
 2. llm_analysis — call the LLM
    { systemPrompt, userPromptTemplate, maxTokens?, temperature? }
@@ -89,7 +94,47 @@ const TOOL_EXAMPLES = `
   }
 }
 
-## Example 3: Composite (query + analysis)
+## Example 3: Write — move contacts to a campaign (updateMany)
+{
+  "name": "move_contacts_to_campaign",
+  "description": "Move specific contacts (by ID list) to a target campaign",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "contact_ids": { "type": "array", "items": { "type": "string" }, "description": "Contact IDs to move" },
+      "target_campaign_id": { "type": "string", "description": "Destination campaign ID" }
+    },
+    "required": ["target_campaign_id"]
+  },
+  "handlerType": "composite",
+  "handlerConfig": {
+    "steps": [
+      {
+        "id": "move",
+        "type": "prisma_query",
+        "config": {
+          "model": "contact",
+          "operation": "updateMany",
+          "where": { "id": { "in": "{{contact_ids}}" } },
+          "data": { "campaignId": "{{target_campaign_id}}" }
+        }
+      },
+      {
+        "id": "result",
+        "type": "llm_analysis",
+        "inputFrom": "move",
+        "config": {
+          "systemPrompt": "You are a concise assistant.",
+          "userPromptTemplate": "The operation result was: {{data}}. Report how many contacts were moved.",
+          "maxTokens": 100
+        }
+      }
+    ],
+    "output": "result"
+  }
+}
+
+## Example 4: Composite (query + analysis)
 {
   "name": "best_companies_to_target",
   "description": "Find companies with the most HIGH fit contacts and suggest focus order",
@@ -233,10 +278,17 @@ function validateToolDSL(raw: string): { success: true; data: ToolDSL } | { succ
   if (obj.handlerType === "prisma_query") {
     const cfg = obj.handlerConfig as PrismaQueryConfig;
     const allowedModels = ["contact", "campaign", "agentKnowledge", "executionLog", "dailyRun", "contactInsight", "messageExperiment"];
+    const allowedOps = ["findMany", "findFirst", "count", "groupBy", "aggregate", "updateMany", "deleteMany", "create"];
     if (!allowedModels.includes(cfg.model)) {
       return { success: false, error: `handlerConfig.model must be one of: ${allowedModels.join(", ")}` };
     }
     if (!cfg.operation) return { success: false, error: "handlerConfig.operation is required for prisma_query" };
+    if (!allowedOps.includes(cfg.operation)) {
+      return { success: false, error: `operation must be one of: ${allowedOps.join(", ")}` };
+    }
+    if ((cfg.operation === "updateMany" || cfg.operation === "create") && !cfg.data) {
+      return { success: false, error: `'${cfg.operation}' requires a 'data' field` };
+    }
   }
 
   // Safety: userId must NOT be in where — it is auto-injected
@@ -381,15 +433,17 @@ Now generate the JSON DSL config for this tool. Output ONLY valid JSON.`.trim();
   // ── STAGE 3: STORE ──────────────────────────────────────────────────────────
   onProgress?.(`💾 STORE — Saving tool '${validated.name}'...`);
 
-  // Check for name collision
-  const existing = await prisma.dynamicTool.findFirst({ where: { userId, name: validated.name } });
-  if (existing) {
-    // Deactivate old version and replace
-    await prisma.dynamicTool.update({ where: { id: existing.id }, data: { isActive: false } });
-  }
-
-  await prisma.dynamicTool.create({
-    data: {
+  // Upsert: update existing record (even if inactive) or create new — avoids @@unique collision
+  await prisma.dynamicTool.upsert({
+    where: { userId_name: { userId, name: validated.name } },
+    update: {
+      description: validated.description,
+      parameters: validated.parameters as object,
+      handlerType: validated.handlerType,
+      handlerConfig: validated.handlerConfig as object,
+      isActive: true,
+    },
+    create: {
       userId,
       name: validated.name,
       description: validated.description,
@@ -397,7 +451,7 @@ Now generate the JSON DSL config for this tool. Output ONLY valid JSON.`.trim();
       handlerType: validated.handlerType,
       handlerConfig: validated.handlerConfig as object,
       isActive: true,
-    }
+    },
   });
 
   await prisma.toolGenerationLog.update({

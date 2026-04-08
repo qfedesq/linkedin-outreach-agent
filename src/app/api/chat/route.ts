@@ -8,7 +8,7 @@ import { getToolDefinitions, executeTool, ToolResult, ProgressCallback, getDynam
 import { clearAgentStatus } from "@/lib/agent-status";
 import { diagnoseError } from "@/lib/self-heal";
 
-export const maxDuration = 120;
+export const maxDuration = 300;
 
 export async function POST(request: Request) {
   const user = await getAuthUser();
