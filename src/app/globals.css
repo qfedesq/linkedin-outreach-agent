@@ -137,6 +137,7 @@
 .prose-agent h3 { font-size: 0.95em; font-weight: 600; margin: 0.5em 0 0.25em; }
 .prose-agent h4 { font-size: 0.9em; font-weight: 600; margin: 0.5em 0 0.25em; color: var(--muted-foreground); }
 .prose-agent strong { font-weight: 600; color: var(--foreground); }
+.prose-agent em { color: var(--muted-foreground); font-style: italic; }
 .prose-agent code {
   font-size: 0.85em;
   background: var(--muted);
@@ -144,6 +145,56 @@
   border-radius: 0.25em;
   font-family: var(--font-mono);
 }
-.prose-agent ul { margin: 0.25em 0; padding-left: 1.25em; list-style: disc; }
-.prose-agent li { margin: 0.1em 0; }
-.prose-agent br { display: block; content: ""; margin: 0.15em 0; }
+.prose-agent ul { margin: 0.3em 0; padding-left: 1.25em; list-style: disc; }
+.prose-agent ol { margin: 0.3em 0; padding-left: 1.25em; list-style: decimal; }
+.prose-agent li { margin: 0.15em 0; }
+.prose-agent br { display: block; content: ""; margin: 0.1em 0; }
+
+/* Markdown table — replaces the ugly pipe-text tables */
+.prose-agent .md-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.5em 0;
+  font-size: 0.8em;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+.prose-agent .md-table thead tr {
+  background: var(--muted);
+}
+.prose-agent .md-table th {
+  text-align: left;
+  padding: 5px 8px;
+  font-weight: 600;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+  border-bottom: 1px solid var(--border);
+}
+.prose-agent .md-table td {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border)/40;
+  color: var(--foreground);
+  word-break: break-word;
+}
+.prose-agent .md-table tbody tr:last-child td { border-bottom: none; }
+.prose-agent .md-table tbody tr:hover { background: var(--accent)/30; }
+
+/* Section divider */
+.prose-agent .md-hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 0.6em 0;
+}
+
+/* Next step callout */
+.prose-agent .md-nextstep {
+  margin-top: 0.75em;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--primary) 8%, transparent);
+  border-left: 2px solid var(--primary);
+  color: var(--foreground);
+  font-size: 0.8em;
+  line-height: 1.5;
+}

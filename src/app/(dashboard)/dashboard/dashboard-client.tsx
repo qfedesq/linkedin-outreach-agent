@@ -913,19 +913,103 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-function fmtMd(t: string): string {
+// ─────────────────────── Markdown renderer ───────────────────────
+// Converts agent markdown to clean HTML — handles tables as cards, not pipe-text.
+
+function inlineMd(t: string): string {
   return t
     .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
     .replace(/\*(.+?)\*/g, "<em>$1</em>")
-    .replace(/`([^`]+)`/g, "<code>$1</code>")
-    .replace(/^### (.+)$/gm, "<h4>$1</h4>")
-    .replace(/^## (.+)$/gm, "<h3>$1</h3>")
-    .replace(/^# (.+)$/gm, "<h2>$1</h2>")
-    .replace(/^- (.+)$/gm, "<li>$1</li>")
-    .replace(/(<li>[\s\S]*?<\/li>)+/g, m => `<ul>${m}</ul>`)
-    .replace(/^\d+\. (.+)$/gm, "<li>$1</li>")
-    .replace(/\n\n/g, "</p><p>")
-    .replace(/\n/g, "<br/>")
-    .replace(/^/, "<p>")
-    .replace(/$/, "</p>");
+    .replace(/`([^`]+)`/g, "<code>$1</code>");
+}
+
+function parseTable(lines: string[]): string {
+  // lines[0] = header row, lines[1] = separator row (---), lines[2..] = data rows
+  const parseRow = (line: string) =>
+    line.split("|").map(c => c.trim()).filter((_, i, a) => i > 0 && i < a.length - 1);
+
+  const headers = parseRow(lines[0]);
+  const rows = lines.slice(2).map(parseRow);
+
+  const thCells = headers.map(h => `<th>${inlineMd(h)}</th>`).join("");
+  const trRows = rows.map(r => {
+    const tds = headers.map((_, i) => `<td>${inlineMd(r[i] ?? "")}</td>`).join("");
+    return `<tr>${tds}</tr>`;
+  }).join("");
+
+  return `<table class="md-table"><thead><tr>${thCells}</tr></thead><tbody>${trRows}</tbody></table>`;
+}
+
+function fmtMd(t: string): string {
+  const lines = t.split("\n");
+  const out: string[] = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    // ── Table detection ──────────────────────────────────────────
+    if (line.trim().startsWith("|") && lines[i + 1]?.trim().match(/^\|[-| :]+\|$/)) {
+      const tableLines: string[] = [line];
+      // separator row
+      tableLines.push(lines[i + 1]);
+      i += 2;
+      while (i < lines.length && lines[i].trim().startsWith("|")) {
+        tableLines.push(lines[i]);
+        i++;
+      }
+      out.push(parseTable(tableLines));
+      continue;
+    }
+
+    // ── Horizontal rule / section separator ─────────────────────
+    if (line.trim() === "---") {
+      out.push('<hr class="md-hr"/>');
+      i++; continue;
+    }
+
+    // ── Next step callout ────────────────────────────────────────
+    if (/^💡\s*\*?\*?Next step/i.test(line.trim()) || /^---\s*$/.test(line.trim()) && /💡/.test(lines[i + 1] ?? "")) {
+      // Collect next-step block (everything on the same line + continuation)
+      const content = line.replace(/^💡\s*/, "");
+      out.push(`<div class="md-nextstep">💡 ${inlineMd(content)}</div>`);
+      i++; continue;
+    }
+
+    // ── Headings ─────────────────────────────────────────────────
+    if (/^### (.+)/.test(line)) { out.push(`<h4>${inlineMd(line.replace(/^### /, ""))}</h4>`); i++; continue; }
+    if (/^## (.+)/.test(line))  { out.push(`<h3>${inlineMd(line.replace(/^## /, ""))}</h3>`); i++; continue; }
+    if (/^# (.+)/.test(line))   { out.push(`<h2>${inlineMd(line.replace(/^# /, ""))}</h2>`); i++; continue; }
+
+    // ── Bullet list ───────────────────────────────────────────────
+    if (/^[*-] (.+)/.test(line)) {
+      const items: string[] = [];
+      while (i < lines.length && /^[*-] (.+)/.test(lines[i])) {
+        items.push(`<li>${inlineMd(lines[i].replace(/^[*-] /, ""))}</li>`);
+        i++;
+      }
+      out.push(`<ul>${items.join("")}</ul>`);
+      continue;
+    }
+
+    // ── Numbered list ─────────────────────────────────────────────
+    if (/^\d+\. (.+)/.test(line)) {
+      const items: string[] = [];
+      while (i < lines.length && /^\d+\. (.+)/.test(lines[i])) {
+        items.push(`<li>${inlineMd(lines[i].replace(/^\d+\. /, ""))}</li>`);
+        i++;
+      }
+      out.push(`<ol>${items.join("")}</ol>`);
+      continue;
+    }
+
+    // ── Empty line ────────────────────────────────────────────────
+    if (line.trim() === "") { out.push("<br/>"); i++; continue; }
+
+    // ── Plain paragraph ───────────────────────────────────────────
+    out.push(`<p>${inlineMd(line)}</p>`);
+    i++;
+  }
+
+  return out.join("");
 }
