@@ -109,8 +109,22 @@ function getSuggestions(stats: Stats): Suggestion[] {
 
 /* ─────────────── Main component ─────────────── */
 
+// sessionStorage key for chat history per campaign
+function chatStorageKey(cid?: string) { return `chat_msgs_${cid ?? "global"}`; }
+function readCachedMessages(cid?: string): Message[] {
+  try {
+    const raw = typeof window !== "undefined" ? sessionStorage.getItem(chatStorageKey(cid)) : null;
+    return raw ? (JSON.parse(raw) as Message[]) : [];
+  } catch { return []; }
+}
+function writeCachedMessages(cid: string | undefined, msgs: Message[]) {
+  try { sessionStorage.setItem(chatStorageKey(cid), JSON.stringify(msgs.slice(-60))); } catch {}
+}
+
 export default function DashboardPage({ campaignId }: { campaignId?: string }) {
-  const [messages, setMessages] = useState<Message[]>([]);
+  // Restore from sessionStorage instantly — prevents flash of empty chat on navigation back
+  const [messages, setMessages] = useState<Message[]>(() => readCachedMessages(campaignId));
+  const [historyLoading, setHistoryLoading] = useState(true);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [liveSegments, setLiveSegments] = useState<Segment[]>([]);
@@ -214,11 +228,20 @@ export default function DashboardPage({ campaignId }: { campaignId?: string }) {
       fetch(`/api/chat${campaignId ? `?campaignId=${campaignId}` : ""}`)
         .then(r => r.json())
         .then(data => {
+          const freshMsgs: Message[] = data.history?.length > 0
+            ? data.history.map((m: { role: string; content: string }) => ({ role: m.role as "user" | "assistant", content: m.content }))
+            : [];
           if (data.history?.length > 0) {
-            setMessages(data.history.map((m: { role: string; content: string }) => ({ role: m.role as "user" | "assistant", content: m.content })));
+            setMessages(freshMsgs);
             setHistory(data.history);
+            // Persist to sessionStorage so navigation back restores instantly
+            writeCachedMessages(campaignId, freshMsgs);
           }
-          if (data.greeting) setMessages(prev => [...prev, { role: "assistant", content: data.greeting }]);
+          // Only show greeting when there's no conversation history yet
+          if (data.greeting && freshMsgs.length === 0) {
+            setMessages([{ role: "assistant", content: data.greeting }]);
+          }
+          setHistoryLoading(false);
           // Fetch custom widgets for this dashboard
           const wParams = campaignId ? `?campaignId=${campaignId}` : "";
           fetch(`/api/widgets${wParams}`)
@@ -226,7 +249,7 @@ export default function DashboardPage({ campaignId }: { campaignId?: string }) {
             .then(d => setWidgets(d.widgets || []))
             .catch(() => {});
         })
-        .catch(() => {});
+        .catch(() => { setHistoryLoading(false); });
     }, 0);
     return () => clearTimeout(timeout);
   }, [campaignId, fetchPriorities, fetchStats]);
@@ -243,7 +266,11 @@ export default function DashboardPage({ campaignId }: { campaignId?: string }) {
     const contextMsg = widgetContext ? `[Context: ${widgetContext.label}]\n\n${rawMsg}` : rawMsg;
     setWidgetContext(null);
     setInput("");
-    setMessages(prev => [...prev, { role: "user", content: rawMsg }]);
+    setMessages(prev => {
+      const next = [...prev, { role: "user" as const, content: rawMsg }];
+      writeCachedMessages(campaignId, next);
+      return next;
+    });
     setLoading(true);
     setLiveSegments([]);
 
@@ -345,7 +372,11 @@ export default function DashboardPage({ campaignId }: { campaignId?: string }) {
       }
 
       if (fullContent) {
-        setMessages(prev => [...prev, { role: "assistant", content: fullContent, segments: finalSegments }]);
+        setMessages(prev => {
+          const next = [...prev, { role: "assistant" as const, content: fullContent, segments: finalSegments }];
+          writeCachedMessages(campaignId, next);
+          return next;
+        });
         setHistory(prev => [...prev, { role: "user", content: rawMsg }, { role: "assistant", content: fullContent }].slice(-30));
       }
       setLoading(false);
@@ -507,7 +538,17 @@ export default function DashboardPage({ campaignId }: { campaignId?: string }) {
 
           {/* Messages */}
           <div className="flex-1 overflow-y-auto px-3 py-3 space-y-4">
-            {messages.length === 0 && !loading && (
+            {/* Loading skeleton — shown only on first mount while fetching from DB */}
+            {historyLoading && messages.length === 0 && (
+              <div className="space-y-3 pt-2 animate-pulse">
+                <div className="h-3 w-3/4 rounded bg-muted" />
+                <div className="h-3 w-1/2 rounded bg-muted" />
+                <div className="flex justify-end"><div className="h-7 w-2/3 rounded-2xl bg-muted" /></div>
+                <div className="h-3 w-4/5 rounded bg-muted" />
+                <div className="h-3 w-3/5 rounded bg-muted" />
+              </div>
+            )}
+            {messages.length === 0 && !loading && !historyLoading && (
               <div className="space-y-1.5 pt-2">
                 <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Quick actions</p>
                 {suggestions.slice(0, 4).map((s, i) => (
